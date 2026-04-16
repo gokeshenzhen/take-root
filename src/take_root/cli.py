@@ -14,6 +14,7 @@ from take_root.phases.configure import run_configure
 from take_root.phases.init import run_init
 from take_root.phases.plan import run_plan
 from take_root.phases.test import run_test
+from take_root.reset import run_reset
 from take_root.state import load_or_create_state, reconcile_state_from_disk
 from take_root.ui import checkpoint_prompt, error, info, print_status
 
@@ -97,6 +98,17 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser = subparsers.add_parser("run", help="按顺序执行多个阶段")
     run_parser.add_argument("--phases", default="plan,code,test", help="逗号分隔：plan,code,test")
     run_parser.add_argument("--no-checkpoint", action="store_true", help="阶段间不暂停确认")
+
+    reset_parser = subparsers.add_parser("reset", help="重置或回退 take-root 状态")
+    reset_group = reset_parser.add_mutually_exclusive_group()
+    reset_group.add_argument("--all", action="store_true", help="连配置与上下文一起彻底清空")
+    reset_group.add_argument(
+        "--to",
+        choices=["plan", "code", "test"],
+        default=None,
+        help="回退到指定阶段起点",
+    )
+    reset_parser.add_argument("-y", "--yes", action="store_true", help="跳过确认提示")
 
     subparsers.add_parser("status", help="查看当前状态")
     subparsers.add_parser("resume", help="从 state.json 继续执行")
@@ -242,6 +254,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 _run_phase(phase, project_root, phase_args)
                 if not _should_continue(bool(args.no_checkpoint)):
                     return 0
+            return 0
+        if args.command == "reset":
+            run_reset(
+                project_root,
+                full=bool(args.all),
+                to_phase=str(args.to) if args.to is not None else None,
+                force=bool(args.yes),
+            )
             return 0
         if args.command == "status":
             state = reconcile_state_from_disk(project_root)

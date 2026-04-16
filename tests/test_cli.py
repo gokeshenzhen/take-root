@@ -17,6 +17,7 @@ from take_root.cli import build_parser
         (["code", "--help"],),
         (["test", "--help"],),
         (["run", "--help"],),
+        (["reset", "--help"],),
         (["status", "--help"],),
         (["resume", "--help"],),
         (["logs", "--help"],),
@@ -49,3 +50,26 @@ def test_parse_doctor_all_args() -> None:
     args = parser.parse_args(["doctor", "--persona", "all"])
     assert args.command == "doctor"
     assert args.persona == "all"
+
+
+def test_parse_reset_args() -> None:
+    parser = build_parser()
+    args = parser.parse_args(["reset", "--all", "--yes"])
+    assert args.command == "reset"
+    assert args.all is True
+    assert args.yes is True
+
+
+def test_parse_reset_to_args() -> None:
+    parser = build_parser()
+    args = parser.parse_args(["reset", "--to", "code", "--yes"])
+    assert args.command == "reset"
+    assert args.to == "code"
+    assert args.yes is True
+
+
+def test_parse_reset_rejects_all_with_to() -> None:
+    parser = build_parser()
+    with pytest.raises(SystemExit) as excinfo:
+        parser.parse_args(["reset", "--all", "--to", "code"])
+    assert excinfo.value.code == 2
