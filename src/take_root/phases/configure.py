@@ -137,11 +137,7 @@ def _provider_prompt(name: str, provider: ProviderConfig) -> ProviderConfig:
             alias: _select_option(
                 f"选择 default_models.{alias}",
                 _with_current_option(
-                    (
-                        model_choices
-                        if model_choices is not None
-                        else KIMI_MODEL_CHOICES
-                    ),
+                    (model_choices if model_choices is not None else KIMI_MODEL_CHOICES),
                     defaults.get(alias, ""),
                 ),
                 defaults.get(alias, ""),

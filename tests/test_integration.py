@@ -10,7 +10,7 @@ from take_root.cli import main
 from take_root.config import default_take_root_config, save_config
 from take_root.phases.init import run_init
 from take_root.phases.plan import run_plan
-from take_root.runtimes.base import RuntimeCallResult
+from take_root.runtimes.base import RuntimeCallResult, RuntimePolicy
 from take_root.state import load_or_create_state, transition
 
 pytestmark = pytest.mark.integration
@@ -81,9 +81,13 @@ def test_plan_phase_with_mocked_runtimes(monkeypatch: pytest.MonkeyPatch, tmp_pa
             return RuntimeCallResult(0, "", "", 0.1)
 
         def call_noninteractive(
-            self, boot_message: str, cwd: Path, timeout_sec: int = 900
+            self,
+            boot_message: str,
+            cwd: Path,
+            timeout_sec: int = 900,
+            policy: RuntimePolicy | None = None,
         ) -> RuntimeCallResult:
-            del timeout_sec
+            del timeout_sec, policy
             output_line = next(
                 line for line in boot_message.splitlines() if line.startswith("output_path: ")
             )
@@ -100,7 +104,12 @@ def test_plan_phase_with_mocked_runtimes(monkeypatch: pytest.MonkeyPatch, tmp_pa
                         "created_at: 2026-04-14T00:00:00Z\n"
                         "remaining_concerns: 0\n"
                         "---\n"
-                        "# robin\n"
+                        "# Robin — Round 1 Review\n\n"
+                        "## 2. 新发现 / 我的关切\n"
+                        "### [MINOR] x\n"
+                        "- **位置**: jeff_proposal.md § 1\n\n"
+                        "## 3. 收敛评估\n"
+                        "- **我的判断**: converged\n"
                     ),
                     encoding="utf-8",
                 )
@@ -115,7 +124,12 @@ def test_plan_phase_with_mocked_runtimes(monkeypatch: pytest.MonkeyPatch, tmp_pa
                         "created_at: 2026-04-14T00:00:00Z\n"
                         "open_attacks: 0\n"
                         "---\n"
-                        "# jack\n"
+                        "# Jack — Round 1 Adversarial Review\n\n"
+                        "## 2. 新攻击点\n"
+                        "### J1.1 [MINOR] x\n"
+                        "- **攻击对象**: robin_r1.md § 1\n\n"
+                        "## 3. 收敛评估\n"
+                        "- **我的判断**: converged\n"
                     ),
                     encoding="utf-8",
                 )
@@ -131,7 +145,15 @@ def test_plan_phase_with_mocked_runtimes(monkeypatch: pytest.MonkeyPatch, tmp_pa
                         "converged: true\n"
                         "created_at: 2026-04-14T00:00:00Z\n"
                         "---\n"
-                        "# final\n"
+                        "# 最终方案：demo\n\n"
+                        "## 1. 目标\n"
+                        "## 2. 非目标\n"
+                        "## 3. 背景与约束\n"
+                        "## 4. 设计概览\n"
+                        "## 5. 关键决策\n"
+                        "## 6. 实施步骤\n"
+                        "## 7. 验收标准\n"
+                        "## 8. 已知风险与未决问题\n"
                     ),
                     encoding="utf-8",
                 )

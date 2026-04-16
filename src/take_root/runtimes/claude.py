@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 
 from take_root.errors import ConfigError, RuntimeCallError
-from take_root.runtimes.base import BaseRuntime, RuntimeCallResult
+from take_root.runtimes.base import BaseRuntime, RuntimeCallResult, RuntimePolicy
 
 CLAUDE_REASONING_MAP = {
     "minimal": "low",  # SPEC-GAP: Claude CLI offers low/medium/high/max only.
@@ -27,7 +27,7 @@ class ClaudeRuntime(BaseRuntime):
         if result.returncode != 0:
             raise ConfigError("Claude CLI not available: run `claude --version` to verify install")
 
-    def _build_common_args(self) -> list[str]:
+    def _build_common_args(self, policy: RuntimePolicy | None = None) -> list[str]:
         model = (
             self.resolved_config.resolved_model
             if self.resolved_config is not None
@@ -50,6 +50,21 @@ class ClaudeRuntime(BaseRuntime):
             effort = CLAUDE_REASONING_MAP.get(raw_effort.lower())
             if effort:
                 args.extend(["--effort", effort])
+        if policy is not None and policy.mode == "review_only":
+            if policy.output_path is None:
+                raise ConfigError("review_only policy requires output_path")
+            tool_list = "Read,Grep,Glob,LS,Write"
+            allowed = f"Read,Grep,Glob,LS,Write({policy.output_path})"
+            args.extend(
+                [
+                    "--tools",
+                    tool_list,
+                    "--allowedTools",
+                    allowed,
+                    "--permission-mode",
+                    "acceptEdits",
+                ]
+            )
         return args
 
     def call_noninteractive(
@@ -57,8 +72,9 @@ class ClaudeRuntime(BaseRuntime):
         boot_message: str,
         cwd: Path,
         timeout_sec: int = 3600,
+        policy: RuntimePolicy | None = None,
     ) -> RuntimeCallResult:
-        cmd = ["claude", "-p", boot_message, *self._build_common_args()]
+        cmd = ["claude", "-p", boot_message, *self._build_common_args(policy)]
         return self._run_noninteractive_with_policy(
             cmd,
             cwd,

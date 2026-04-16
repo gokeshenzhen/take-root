@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 from take_root.errors import ConfigError, RuntimeCallError
-from take_root.runtimes.base import BaseRuntime, RuntimeCallResult
+from take_root.runtimes.base import BaseRuntime, RuntimeCallResult, RuntimePolicy
 
 CODEX_REASONING_ALLOWED = {"minimal", "low", "medium", "high"}
 
@@ -33,8 +33,9 @@ class CodexRuntime(BaseRuntime):
         boot_message: str,
         cwd: Path,
         timeout_sec: int = 3600,
+        policy: RuntimePolicy | None = None,
     ) -> RuntimeCallResult:
-        cmd = self._build_common_args(interactive=False)
+        cmd = self._build_common_args(interactive=False, policy=policy)
         cmd.append(boot_message)
         return self._run_noninteractive_with_policy(
             cmd,
@@ -43,7 +44,12 @@ class CodexRuntime(BaseRuntime):
             env=self._subprocess_env(),
         )
 
-    def _build_common_args(self, *, interactive: bool) -> list[str]:
+    def _build_common_args(
+        self,
+        *,
+        interactive: bool,
+        policy: RuntimePolicy | None = None,
+    ) -> list[str]:
         model = (
             self.resolved_config.resolved_model
             if self.resolved_config is not None
@@ -54,6 +60,17 @@ class CodexRuntime(BaseRuntime):
         cmd = ["codex"]
         if not interactive:
             cmd.extend(["exec", "--skip-git-repo-check"])
+            if policy is not None and policy.mode == "review_only":
+                if policy.output_path is None:
+                    raise ConfigError("review_only policy requires output_path")
+                cmd.extend(
+                    [
+                        "--sandbox",
+                        "read-only",
+                        "--output-last-message",
+                        str(policy.output_path),
+                    ]
+                )
         cmd.extend(
             [
                 "-m",

@@ -8,7 +8,7 @@ from pathlib import Path
 
 from take_root.artifacts import list_artifact_files
 from take_root.doctor import run_doctor
-from take_root.errors import ArtifactError, RuntimeCallError, TakeRootError, UserAbort
+from take_root.errors import ArtifactError, PolicyError, RuntimeCallError, TakeRootError, UserAbort
 from take_root.phases.code import run_code
 from take_root.phases.configure import run_configure
 from take_root.phases.init import run_init
@@ -276,6 +276,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         error(str(exc))
         return 2
     except RuntimeCallError as exc:
+        error(str(exc))
+        if args.verbose:
+            raise
+        return 3
+    except PolicyError as exc:
         error(str(exc))
         if args.verbose:
             raise

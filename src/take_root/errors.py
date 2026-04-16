@@ -13,6 +13,10 @@ class RuntimeCallError(TakeRootError):
     """Runtime invocation failed."""
 
 
+class PolicyError(TakeRootError):
+    """Runtime policy or integrity boundary was violated."""
+
+
 class ArtifactError(TakeRootError):
     """Artifact file missing or malformed."""
 

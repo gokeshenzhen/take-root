@@ -1,22 +1,36 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from take_root.artifacts import artifact_path
 from take_root.config import TakeRootConfig, require_config, resolve_persona_runtime_config
-from take_root.errors import ConfigError
+from take_root.errors import ConfigError, PolicyError
+from take_root.guardrails import (
+    WorkspaceSnapshot,
+    scan_review_context,
+    snapshot_workspace,
+    write_policy_violation_report,
+)
 from take_root.persona import Persona, find_harness_root, load_persona
 from take_root.phases import format_boot_message, validate_artifact
 from take_root.phases.init import run_init
-from take_root.runtimes.base import BaseRuntime
+from take_root.runtimes.base import BaseRuntime, RuntimePolicy
 from take_root.runtimes.claude import ClaudeRuntime
 from take_root.runtimes.codex import CodexRuntime
 from take_root.state import reconcile_state_from_disk, transition
 from take_root.ui import ask, info, warn
 
 MAX_PLAN_ROUNDS = 5
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewOnlyCallResult:
+    snapshot: WorkspaceSnapshot
+    call_error: Exception | None
 
 
 def _runtime_for(
@@ -88,6 +102,107 @@ def _status_pair(round_item: dict[str, Any]) -> tuple[str, str]:
 
 def _relative(path: Path, project_root: Path) -> str:
     return str(path.resolve().relative_to(project_root.resolve()))
+
+
+def _review_context_files(
+    *,
+    project_root: Path,
+    persona: Persona,
+    proposal: Path,
+    prior_robin: list[str],
+    prior_jack: list[str],
+    latest_peer: str | None = None,
+) -> list[Path]:
+    files = [
+        project_root / "CLAUDE.md",
+        project_root / "AGENTS.md",
+        persona.source_path,
+        proposal,
+        *[Path(path) for path in prior_robin],
+        *[Path(path) for path in prior_jack],
+    ]
+    if latest_peer is not None:
+        files.append(Path(latest_peer))
+    unique: list[Path] = []
+    seen: set[Path] = set()
+    for path in files:
+        resolved = path.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        unique.append(resolved)
+    return unique
+
+
+def _call_review_only_persona(
+    *,
+    runtime: BaseRuntime,
+    persona: Persona,
+    project_root: Path,
+    boot_message: str,
+    output_path: Path,
+    context_files: list[Path],
+    timeout_sec: int,
+) -> ReviewOnlyCallResult:
+    scan_review_context(context_files)
+    snapshot = snapshot_workspace(project_root, output_path)
+    call_error: Exception | None = None
+    try:
+        runtime.call_noninteractive(
+            boot_message,
+            cwd=project_root,
+            timeout_sec=timeout_sec,
+            policy=RuntimePolicy.review_only(output_path),
+        )
+    except Exception as exc:
+        call_error = exc
+    changed_paths = snapshot.out_of_scope_changes()
+    if changed_paths:
+        sample = ", ".join(changed_paths[:8])
+        suffix = "" if len(changed_paths) <= 8 else f" ... (+{len(changed_paths) - 8} more)"
+        policy_error = PolicyError(
+            f"review_only policy violation: files outside output_path changed: {sample}{suffix}"
+        )
+        snapshot.restore_output_path()
+        report = write_policy_violation_report(
+            project_root=project_root,
+            persona_name=persona.name,
+            output_path=output_path,
+            details=str(policy_error),
+            changed_paths=changed_paths,
+        )
+        error = PolicyError(f"{policy_error} (evidence: {report})")
+        if call_error is None:
+            raise error
+        raise error from call_error
+    return ReviewOnlyCallResult(snapshot=snapshot, call_error=call_error)
+
+
+def _finalize_review_only_artifact(
+    *,
+    result: ReviewOnlyCallResult,
+    output_path: Path,
+    validate: Callable[[], dict[str, Any]],
+    persona_name: str,
+) -> dict[str, Any]:
+    try:
+        metadata = validate()
+    except Exception:
+        result.snapshot.restore_output_path()
+        raise
+    if result.call_error is not None:
+        warn(
+            f"[plan] {persona_name} runtime exited with an error after producing a valid artifact; "
+            f"accepting {output_path.name}: {result.call_error}"
+        )
+    return metadata
+
+
+def _artifact_validator(path: Path, required_keys: list[str]) -> Callable[[], dict[str, Any]]:
+    def _validate() -> dict[str, Any]:
+        return validate_artifact(path, required_keys)
+
+    return _validate
 
 
 def run_plan(
@@ -174,11 +289,43 @@ def run_plan(
                 latest_jack=latest_jack,
                 output_path=str(robin_path.resolve()),
             )
-            robin_runtime.call_noninteractive(robin_boot, cwd=project_root, timeout_sec=900)
-        robin_meta = validate_artifact(
-            robin_path,
-            ["artifact", "round", "status", "addresses", "created_at", "remaining_concerns"],
-        )
+            robin_result = _call_review_only_persona(
+                runtime=robin_runtime,
+                persona=robin,
+                project_root=project_root,
+                boot_message=robin_boot,
+                output_path=robin_path,
+                context_files=_review_context_files(
+                    project_root=project_root,
+                    persona=robin,
+                    proposal=jeff_path,
+                    prior_robin=prior_robin,
+                    prior_jack=prior_jack,
+                    latest_peer=latest_jack,
+                ),
+                timeout_sec=900,
+            )
+            robin_meta = _finalize_review_only_artifact(
+                result=robin_result,
+                output_path=robin_path,
+                persona_name="robin",
+                validate=_artifact_validator(
+                    robin_path,
+                    [
+                        "artifact",
+                        "round",
+                        "status",
+                        "addresses",
+                        "created_at",
+                        "remaining_concerns",
+                    ],
+                ),
+            )
+        else:
+            robin_meta = validate_artifact(
+                robin_path,
+                ["artifact", "round", "status", "addresses", "created_at", "remaining_concerns"],
+            )
 
         prior_robin_plus = [*prior_robin, str(robin_path.resolve())]
         if not jack_path.exists():
@@ -195,11 +342,36 @@ def run_plan(
                 latest_robin=str(robin_path.resolve()),
                 output_path=str(jack_path.resolve()),
             )
-            jack_runtime.call_noninteractive(jack_boot, cwd=project_root, timeout_sec=900)
-        jack_meta = validate_artifact(
-            jack_path,
-            ["artifact", "round", "status", "addresses", "created_at", "open_attacks"],
-        )
+            jack_result = _call_review_only_persona(
+                runtime=jack_runtime,
+                persona=jack,
+                project_root=project_root,
+                boot_message=jack_boot,
+                output_path=jack_path,
+                context_files=_review_context_files(
+                    project_root=project_root,
+                    persona=jack,
+                    proposal=jeff_path,
+                    prior_robin=prior_robin_plus,
+                    prior_jack=prior_jack,
+                    latest_peer=str(robin_path.resolve()),
+                ),
+                timeout_sec=900,
+            )
+            jack_meta = _finalize_review_only_artifact(
+                result=jack_result,
+                output_path=jack_path,
+                persona_name="jack",
+                validate=_artifact_validator(
+                    jack_path,
+                    ["artifact", "round", "status", "addresses", "created_at", "open_attacks"],
+                ),
+            )
+        else:
+            jack_meta = validate_artifact(
+                jack_path,
+                ["artifact", "round", "status", "addresses", "created_at", "open_attacks"],
+            )
 
         round_item = {
             "n": round_num,
@@ -244,19 +416,55 @@ def run_plan(
             ],
             output_path=str(final_plan.resolve()),
         )
-        robin_runtime.call_noninteractive(finalize_boot, cwd=project_root, timeout_sec=900)
-    validate_artifact(
-        final_plan,
-        [
-            "artifact",
-            "version",
-            "project_root",
-            "based_on",
-            "negotiation_rounds",
-            "converged",
-            "created_at",
-        ],
-    )
+        final_result = _call_review_only_persona(
+            runtime=robin_runtime,
+            persona=robin,
+            project_root=project_root,
+            boot_message=finalize_boot,
+            output_path=final_plan,
+            context_files=_review_context_files(
+                project_root=project_root,
+                persona=robin,
+                proposal=jeff_path,
+                prior_robin=[
+                    str((plan_dir / f"robin_r{i}.md").resolve()) for i in range(1, rounds_used + 1)
+                ],
+                prior_jack=[
+                    str((plan_dir / f"jack_r{i}.md").resolve()) for i in range(1, rounds_used + 1)
+                ],
+            ),
+            timeout_sec=900,
+        )
+        _finalize_review_only_artifact(
+            result=final_result,
+            output_path=final_plan,
+            persona_name="robin",
+            validate=_artifact_validator(
+                final_plan,
+                [
+                    "artifact",
+                    "version",
+                    "project_root",
+                    "based_on",
+                    "negotiation_rounds",
+                    "converged",
+                    "created_at",
+                ],
+            ),
+        )
+    else:
+        validate_artifact(
+            final_plan,
+            [
+                "artifact",
+                "version",
+                "project_root",
+                "based_on",
+                "negotiation_rounds",
+                "converged",
+                "created_at",
+            ],
+        )
     return transition(
         project_root,
         {

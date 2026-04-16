@@ -38,3 +38,88 @@ def test_validate_artifact_missing_required(tmp_path: Path) -> None:
     path.write_text("---\na: 1\n---\nbody\n", encoding="utf-8")
     with pytest.raises(ArtifactError):
         validate_artifact(path, ["a", "b"])
+
+
+def test_validate_robin_review_requires_convergence_section(tmp_path: Path) -> None:
+    path = tmp_path / "robin_r2.md"
+    path.write_text(
+        (
+            "---\n"
+            "artifact: robin_review\n"
+            "round: 2\n"
+            "status: ongoing\n"
+            "addresses: jack_r1.md\n"
+            "created_at: 2026-04-16T00:00:00Z\n"
+            "remaining_concerns: 1\n"
+            "---\n"
+            "# Robin — Round 2 Review\n\n"
+            "## 1. 对 Jack 的回应\n"
+            "### J1.1: x\n"
+            "## 2. 新发现 / 我的关切\n"
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ArtifactError, match="收敛评估"):
+        validate_artifact(
+            path,
+            ["artifact", "round", "status", "addresses", "created_at", "remaining_concerns"],
+        )
+
+
+def test_validate_jack_review_requires_integer_open_attacks(tmp_path: Path) -> None:
+    path = tmp_path / "jack_r1.md"
+    path.write_text(
+        (
+            "---\n"
+            "artifact: jack_review\n"
+            "round: 1\n"
+            "status: ongoing\n"
+            "addresses: robin_r1.md\n"
+            "created_at: 2026-04-16T00:00:00Z\n"
+            "open_attacks: nope\n"
+            "---\n"
+            "# Jack — Round 1 Adversarial Review\n\n"
+            "## 2. 新攻击点\n\n"
+            "## 3. 收敛评估\n"
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ArtifactError, match="open_attacks"):
+        validate_artifact(
+            path,
+            ["artifact", "round", "status", "addresses", "created_at", "open_attacks"],
+        )
+
+
+def test_validate_final_plan_requires_expected_sections(tmp_path: Path) -> None:
+    path = tmp_path / "final_plan.md"
+    path.write_text(
+        (
+            "---\n"
+            "artifact: final_plan\n"
+            "version: 1\n"
+            "project_root: /tmp/demo\n"
+            "based_on: jeff_proposal.md\n"
+            "negotiation_rounds: 1\n"
+            "converged: true\n"
+            "created_at: 2026-04-16T00:00:00Z\n"
+            "---\n"
+            "# 最终方案：demo\n\n"
+            "## 1. 目标\n"
+            "## 2. 非目标\n"
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ArtifactError, match="背景与约束"):
+        validate_artifact(
+            path,
+            [
+                "artifact",
+                "version",
+                "project_root",
+                "based_on",
+                "negotiation_rounds",
+                "converged",
+                "created_at",
+            ],
+        )

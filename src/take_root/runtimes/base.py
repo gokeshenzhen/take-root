@@ -7,7 +7,7 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from take_root.errors import ConfigError, RuntimeCallError
 from take_root.persona import Persona
@@ -32,6 +32,21 @@ class RuntimeCallResult:
     stdout: str
     stderr: str
     duration_sec: float
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimePolicy:
+    mode: Literal["default", "review_only"] = "default"
+    output_path: Path | None = None
+    allow_shell: bool = True
+
+    @classmethod
+    def review_only(cls, output_path: Path) -> RuntimePolicy:
+        return cls(
+            mode="review_only",
+            output_path=output_path.resolve(),
+            allow_shell=False,
+        )
 
 
 @dataclass(slots=True)
@@ -89,6 +104,7 @@ class BaseRuntime(ABC):
         boot_message: str,
         cwd: Path,
         timeout_sec: int = 3600,
+        policy: RuntimePolicy | None = None,
     ) -> RuntimeCallResult:
         """Run a non-interactive runtime call."""
 

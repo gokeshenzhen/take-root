@@ -10,7 +10,7 @@ import pytest
 from take_root.config import ResolvedRuntimeConfig
 from take_root.errors import RuntimeCallError
 from take_root.persona import Persona
-from take_root.runtimes.base import BaseRuntime, RuntimeCallResult, RuntimeConfig
+from take_root.runtimes.base import BaseRuntime, RuntimeCallResult, RuntimeConfig, RuntimePolicy
 from take_root.runtimes.claude import ClaudeRuntime
 from take_root.runtimes.codex import CodexRuntime
 
@@ -55,8 +55,13 @@ class _DummyRuntime(BaseRuntime):
         return
 
     def call_noninteractive(
-        self, boot_message: str, cwd: Path, timeout_sec: int = 3600
+        self,
+        boot_message: str,
+        cwd: Path,
+        timeout_sec: int = 3600,
+        policy: RuntimePolicy | None = None,
     ) -> RuntimeCallResult:
+        del policy
         return self._run_noninteractive_with_policy(["dummy", boot_message], cwd, timeout_sec)
 
     def call_interactive(self, boot_message: str, cwd: Path) -> RuntimeCallResult:
@@ -130,6 +135,41 @@ def test_claude_runtime_builds_expected_command(
     assert "low" in cmd
 
 
+def test_claude_runtime_review_only_policy_builds_restricted_command(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def _fake_policy(
+        self: ClaudeRuntime,
+        cmd: list[str],
+        cwd: Path,
+        timeout_sec: int,
+        env: dict[str, str] | None = None,
+    ) -> RuntimeCallResult:
+        captured["cmd"] = cmd
+        del self, cwd, timeout_sec, env
+        return RuntimeCallResult(0, "ok", "", 0.1)
+
+    monkeypatch.setattr(ClaudeRuntime, "_run_noninteractive_with_policy", _fake_policy)
+    runtime = ClaudeRuntime(
+        _persona("claude"),
+        tmp_path,
+        resolved_config=_resolved_config(runtime_name="claude"),
+    )
+    output_path = tmp_path / "artifact.md"
+    runtime.call_noninteractive(
+        "BOOT",
+        tmp_path,
+        policy=RuntimePolicy.review_only(output_path),
+    )
+    cmd = captured["cmd"]
+    assert "--tools" in cmd
+    assert "--allowedTools" in cmd
+    assert any(f"Write({output_path.resolve()})" in item for item in cmd)
+    assert "--permission-mode" in cmd
+
+
 def test_codex_runtime_builds_expected_command(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -165,6 +205,45 @@ def test_codex_runtime_builds_expected_command(
     assert "BOOT" == cmd[-1]
     assert any(item.startswith("developer_instructions=") for item in cmd)
     assert any(item.startswith("model_reasoning_effort=") for item in cmd)
+
+
+def test_codex_runtime_review_only_policy_routes_last_message_to_output(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def _fake_policy(
+        self: CodexRuntime,
+        cmd: list[str],
+        cwd: Path,
+        timeout_sec: int,
+        env: dict[str, str] | None = None,
+    ) -> RuntimeCallResult:
+        captured["cmd"] = cmd
+        del self, cwd, timeout_sec, env
+        return RuntimeCallResult(0, "ok", "", 0.1)
+
+    monkeypatch.setattr(CodexRuntime, "_run_noninteractive_with_policy", _fake_policy)
+    runtime = CodexRuntime(
+        _persona("codex", reasoning="high"),
+        tmp_path,
+        resolved_config=_resolved_config(
+            runtime_name="codex",
+            model="gpt-5.4",
+            effort="high",
+        ),
+    )
+    output_path = tmp_path / "artifact.md"
+    runtime.call_noninteractive(
+        "BOOT",
+        tmp_path,
+        policy=RuntimePolicy.review_only(output_path),
+    )
+    cmd = captured["cmd"]
+    assert "--sandbox" in cmd
+    assert "read-only" in cmd
+    assert "--output-last-message" in cmd
+    assert str(output_path.resolve()) in cmd
 
 
 def test_codex_runtime_interactive_builds_expected_command(
