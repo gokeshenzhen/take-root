@@ -78,6 +78,45 @@ def test_reconcile_state_from_disk_updates_plan(tmp_path: Path) -> None:
     assert plan["final_plan_path"] == ".take_root/plan/final_plan.md"
 
 
+def test_reconcile_state_from_disk_clears_stale_plan_rounds(tmp_path: Path) -> None:
+    load_or_create_state(tmp_path)
+    _write_artifact(tmp_path / ".take_root" / "plan" / "jeff_proposal.md", "draft")
+    transition(
+        tmp_path,
+        {
+            "current_phase": "code",
+            "phases": {
+                "plan": {
+                    "status": "done",
+                    "jeff_done": True,
+                    "jeff_proposal_path": ".take_root/plan/jeff_proposal.md",
+                    "current_round": 5,
+                    "rounds": [
+                        {
+                            "n": 1,
+                            "robin_path": ".take_root/plan/robin_r1.md",
+                            "robin_status": "ongoing",
+                            "jack_path": ".take_root/plan/jack_r1.md",
+                            "jack_status": "ongoing",
+                        }
+                    ],
+                    "final_plan_path": ".take_root/plan/final_plan.md",
+                    "converged": True,
+                }
+            },
+        },
+    )
+
+    result = reconcile_state_from_disk(tmp_path)
+
+    assert result["current_phase"] == "plan"
+    assert result["phases"]["plan"]["status"] == "in_progress"
+    assert result["phases"]["plan"]["current_round"] == 1
+    assert result["phases"]["plan"]["rounds"] == []
+    assert result["phases"]["plan"]["final_plan_path"] is None
+    assert result["phases"]["plan"]["converged"] is False
+
+
 def test_run_reset_preserves_config_and_context_by_default(tmp_path: Path) -> None:
     save_config(tmp_path, default_take_root_config())
     load_or_create_state(tmp_path)

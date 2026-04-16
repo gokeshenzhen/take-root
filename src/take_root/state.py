@@ -182,9 +182,24 @@ def reconcile_state_from_disk(project_root: Path) -> dict[str, Any]:
     code_dir = take_root_dir(project_root) / "code"
     test_dir = take_root_dir(project_root) / "test"
     phases = state.setdefault("phases", {})
-    plan = phases.setdefault("plan", _default_plan_phase())
-    code = phases.setdefault("code", _default_code_phase())
-    test = phases.setdefault("test", _default_test_phase())
+    existing_code = phases.get("code", {})
+    existing_test = phases.get("test", {})
+
+    plan = _default_plan_phase()
+    code = _default_code_phase()
+    test = _default_test_phase()
+    if isinstance(existing_code, dict):
+        code["vcs_mode"] = existing_code.get("vcs_mode")
+        code["vcs_initial_sha"] = existing_code.get("vcs_initial_sha")
+    if isinstance(existing_test, dict):
+        max_iterations = existing_test.get("max_iterations")
+        if isinstance(max_iterations, int):
+            test["max_iterations"] = max_iterations
+
+    phases["plan"] = plan
+    phases["code"] = code
+    phases["test"] = test
+    state["current_phase"] = "plan"
 
     jeff_path = plan_dir / "jeff_proposal.md"
     if jeff_path.exists() and _safe_parse_frontmatter(jeff_path) is not None:
