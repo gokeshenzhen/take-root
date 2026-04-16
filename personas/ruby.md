@@ -1,9 +1,7 @@
 ---
 name: ruby
 role: implementer (coder)
-runtime: codex
-model: gpt-5.4
-reasoning: high
+runtime: claude
 interactive: false
 output_artifacts:
   - .take_root/code/ruby_r{N}.md

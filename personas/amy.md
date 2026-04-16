@@ -1,9 +1,7 @@
 ---
 name: amy
 role: tester
-runtime: codex
-model: gpt-5.4
-reasoning: medium
+runtime: claude
 interactive: false
 output_artifacts:
   - .take_root/test/amy_r{N}.md

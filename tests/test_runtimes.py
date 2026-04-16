@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from take_root.config import ResolvedRuntimeConfig
 from take_root.errors import RuntimeCallError
 from take_root.persona import Persona
 from take_root.runtimes.base import BaseRuntime, RuntimeCallResult, RuntimeConfig
@@ -18,13 +20,32 @@ def _persona(runtime: str, reasoning: str | None = "high") -> Persona:
         name="x",
         role="r",
         runtime=runtime,
-        model="m1",
-        reasoning=reasoning,
         interactive=False,
         output_artifacts=["a.md"],
         system_prompt="SYS",
         source_path=Path("/tmp/p.md"),
-        raw_frontmatter={},
+        raw_frontmatter={"model": "m1", "reasoning": reasoning} if reasoning else {"model": "m1"},
+    )
+
+
+def _resolved_config(
+    *,
+    runtime_name: str = "claude",
+    model: str = "m1",
+    effort: str | None = "high",
+    env: dict[str, str] | None = None,
+) -> ResolvedRuntimeConfig:
+    return ResolvedRuntimeConfig(
+        runtime_name=runtime_name,
+        provider_name="qwen",
+        provider_kind="anthropic_compatible",
+        base_url="https://example.test",
+        model_selector="sonnet",
+        resolved_model=model,
+        effort=effort,
+        token_source="env:TOKEN",
+        env=env or {"ANTHROPIC_MODEL": model},
+        cleared_env_vars=("ANTHROPIC_MODEL",),
     )
 
 
@@ -77,21 +98,35 @@ def test_claude_runtime_builds_expected_command(
     captured: dict[str, Any] = {}
 
     def _fake_policy(
-        self: ClaudeRuntime, cmd: list[str], cwd: Path, timeout_sec: int
+        self: ClaudeRuntime,
+        cmd: list[str],
+        cwd: Path,
+        timeout_sec: int,
+        env: dict[str, str] | None = None,
     ) -> RuntimeCallResult:
         captured["cmd"] = cmd
         captured["cwd"] = cwd
         captured["timeout_sec"] = timeout_sec
+        captured["env"] = env
         return RuntimeCallResult(0, "ok", "", 0.1)
 
     monkeypatch.setattr(ClaudeRuntime, "_run_noninteractive_with_policy", _fake_policy)
-    runtime = ClaudeRuntime(_persona("claude", reasoning="minimal"), tmp_path)
+    runtime = ClaudeRuntime(
+        _persona("claude", reasoning="minimal"),
+        tmp_path,
+        resolved_config=_resolved_config(
+            runtime_name="claude",
+            model="qwen3.6-plus",
+            effort="minimal",
+        ),
+    )
     runtime.call_noninteractive("BOOT", tmp_path, timeout_sec=123)
     cmd = captured["cmd"]
     assert cmd[:3] == ["claude", "-p", "BOOT"]
     assert "--append-system-prompt" in cmd
     assert "--model" in cmd
     assert "--effort" in cmd
+    assert "qwen3.6-plus" in cmd
     assert "low" in cmd
 
 
@@ -101,15 +136,28 @@ def test_codex_runtime_builds_expected_command(
     captured: dict[str, Any] = {}
 
     def _fake_policy(
-        self: CodexRuntime, cmd: list[str], cwd: Path, timeout_sec: int
+        self: CodexRuntime,
+        cmd: list[str],
+        cwd: Path,
+        timeout_sec: int,
+        env: dict[str, str] | None = None,
     ) -> RuntimeCallResult:
         captured["cmd"] = cmd
         captured["cwd"] = cwd
         captured["timeout_sec"] = timeout_sec
+        captured["env"] = env
         return RuntimeCallResult(0, "ok", "", 0.1)
 
     monkeypatch.setattr(CodexRuntime, "_run_noninteractive_with_policy", _fake_policy)
-    runtime = CodexRuntime(_persona("codex", reasoning="high"), tmp_path)
+    runtime = CodexRuntime(
+        _persona("codex", reasoning="high"),
+        tmp_path,
+        resolved_config=_resolved_config(
+            runtime_name="codex",
+            model="gpt-5.4",
+            effort="high",
+        ),
+    )
     runtime.call_noninteractive("BOOT", tmp_path, timeout_sec=321)
     cmd = captured["cmd"]
     assert cmd[:3] == ["codex", "exec", "--skip-git-repo-check"]
@@ -119,7 +167,45 @@ def test_codex_runtime_builds_expected_command(
     assert any(item.startswith("model_reasoning_effort=") for item in cmd)
 
 
-def test_codex_runtime_interactive_not_supported(tmp_path: Path) -> None:
-    runtime = CodexRuntime(_persona("codex"), tmp_path)
-    with pytest.raises(NotImplementedError):
-        runtime.call_interactive("boot", tmp_path)
+def test_codex_runtime_interactive_builds_expected_command(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def _fake_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        captured["cmd"] = args[0]
+        captured["cwd"] = kwargs["cwd"]
+        captured["env"] = kwargs["env"]
+        return subprocess.CompletedProcess(args[0], 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+    monkeypatch.setattr(time, "monotonic", lambda: 10.0)
+    runtime = CodexRuntime(
+        _persona("codex", reasoning="high"),
+        tmp_path,
+        resolved_config=_resolved_config(
+            runtime_name="codex",
+            model="gpt-5.4",
+            effort="high",
+        ),
+    )
+    result = runtime.call_interactive("BOOT", tmp_path)
+    cmd = captured["cmd"]
+    assert cmd[0] == "codex"
+    assert "exec" not in cmd
+    assert "-m" in cmd
+    assert "BOOT" == cmd[-1]
+    assert result.exit_code == 0
+
+
+def test_base_runtime_subprocess_env_clears_and_injects(tmp_path: Path) -> None:
+    runtime = _DummyRuntime(
+        _persona("claude"),
+        tmp_path,
+        resolved_config=_resolved_config(
+            runtime_name="claude",
+            env={"ANTHROPIC_MODEL": "qwen3.6-plus"},
+        ),
+    )
+    env = runtime._subprocess_env()
+    assert env["ANTHROPIC_MODEL"] == "qwen3.6-plus"

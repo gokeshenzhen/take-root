@@ -9,15 +9,7 @@ from take_root.persona import load_persona
 
 
 def _write_persona(path: Path, *, output_key: str = "output_artifacts") -> None:
-    content = (
-        "---\n"
-        "name: demo\n"
-        "role: test role\n"
-        "runtime: codex\n"
-        "model: gpt-5.4\n"
-        "reasoning: high\n"
-        "interactive: false\n"
-    )
+    content = "---\nname: demo\nrole: test role\nruntime: claude\ninteractive: false\n"
     if output_key == "output_artifacts":
         content += "output_artifacts:\n  - .take_root/plan/demo.md\n"
     else:
@@ -60,7 +52,7 @@ def test_load_persona_missing_key_raises(tmp_path: Path) -> None:
     path = harness_root / "personas" / "demo.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        "---\nname: demo\nruntime: codex\nmodel: gpt-5.4\ninteractive: false\n---\nbody\n",
+        "---\nname: demo\nruntime: claude\ninteractive: false\n---\nbody\n",
         encoding="utf-8",
     )
     with pytest.raises(ConfigError):

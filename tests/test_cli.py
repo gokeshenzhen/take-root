@@ -11,6 +11,8 @@ from take_root.cli import build_parser
     ("argv",),
     [
         (["init", "--help"],),
+        (["configure", "--help"],),
+        (["doctor", "--help"],),
         (["plan", "--help"],),
         (["code", "--help"],),
         (["test", "--help"],),
@@ -32,3 +34,18 @@ def test_parse_basic_plan_args() -> None:
     args = parser.parse_args(["plan", "--max-rounds", "3", "--reference", "a.md"])
     assert args.command == "plan"
     assert args.max_rounds == 3
+
+
+def test_parse_doctor_args() -> None:
+    parser = build_parser()
+    args = parser.parse_args(["doctor", "--persona", "jeff", "--no-call"])
+    assert args.command == "doctor"
+    assert args.persona == "jeff"
+    assert args.no_call is True
+
+
+def test_parse_doctor_all_args() -> None:
+    parser = build_parser()
+    args = parser.parse_args(["doctor", "--persona", "all"])
+    assert args.command == "doctor"
+    assert args.persona == "all"

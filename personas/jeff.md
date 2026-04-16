@@ -2,8 +2,6 @@
 name: jeff
 role: architect — interactive brainstorm & proposal author
 runtime: claude
-model: claude-opus-4-6
-reasoning: medium
 interactive: true
 output_artifact: .take_root/plan/jeff_proposal.md
 ---

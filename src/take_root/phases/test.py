@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from take_root.artifacts import artifact_path
+from take_root.config import TakeRootConfig, require_config, resolve_persona_runtime_config
 from take_root.errors import ArtifactError, ConfigError
 from take_root.persona import Persona, find_harness_root, load_persona
 from take_root.phases import format_boot_message, validate_artifact
@@ -14,12 +15,27 @@ from take_root.state import reconcile_state_from_disk, transition
 from take_root.ui import ask, info
 
 
-def _runtime_for(persona: Persona, project_root: Path) -> BaseRuntime:
-    if persona.runtime == "claude":
-        return ClaudeRuntime(persona, project_root)
-    if persona.runtime == "codex":
-        return CodexRuntime(persona, project_root)
-    raise ConfigError(f"Unsupported runtime: {persona.runtime}")
+def _runtime_for(
+    persona: Persona,
+    project_root: Path,
+    config: TakeRootConfig,
+) -> BaseRuntime:
+    resolved_config = resolve_persona_runtime_config(config, persona.name)
+    if resolved_config.runtime_name == "claude":
+        return ClaudeRuntime(persona, project_root, resolved_config=resolved_config)
+    if resolved_config.runtime_name == "codex":
+        return CodexRuntime(persona, project_root, resolved_config=resolved_config)
+    raise ConfigError(f"Unsupported runtime: {resolved_config.runtime_name}")
+
+
+def _check_runtime_available(runtime_name: str) -> None:
+    if runtime_name == "claude":
+        ClaudeRuntime.check_available()
+        return
+    if runtime_name == "codex":
+        CodexRuntime.check_available()
+        return
+    raise ConfigError(f"Unsupported runtime: {runtime_name}")
 
 
 def _relative(path: Path, project_root: Path) -> str:
@@ -44,6 +60,7 @@ def run_test(
     if escalate not in {"auto", "always", "never"}:
         raise ConfigError("--escalate 必须是 auto|always|never")
 
+    config = require_config(project_root)
     state = reconcile_state_from_disk(project_root)
     if state["phases"]["code"]["status"] != "done":
         raise ConfigError("请先完成 code 阶段")
@@ -51,7 +68,8 @@ def run_test(
     harness_root = find_harness_root()
     amy = load_persona("amy", project_root, harness_root=harness_root)
     ruby = load_persona("ruby", project_root, harness_root=harness_root)
-    CodexRuntime.check_available()
+    for persona in (amy, ruby):
+        _check_runtime_available(resolve_persona_runtime_config(config, persona.name).runtime_name)
 
     final_plan = project_root / ".take_root" / "plan" / "final_plan.md"
     if not final_plan.exists():
@@ -82,7 +100,7 @@ def run_test(
 
         if not amy_path.exists():
             info(f"[test i{iteration}] Amy 全量测试中...")
-            amy_runtime = _runtime_for(amy, project_root)
+            amy_runtime = _runtime_for(amy, project_root, config)
             amy_boot = format_boot_message(
                 "amy",
                 mode="test",
@@ -135,7 +153,7 @@ def run_test(
 
         if not ruby_fix_path.exists():
             info(f"[test i{iteration}] Ruby 修复中...")
-            ruby_runtime = _runtime_for(ruby, project_root)
+            ruby_runtime = _runtime_for(ruby, project_root, config)
             ruby_boot = format_boot_message(
                 "ruby",
                 mode="fix",

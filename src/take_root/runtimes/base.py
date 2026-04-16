@@ -7,9 +7,13 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from take_root.errors import ConfigError, RuntimeCallError
 from take_root.persona import Persona
+
+if TYPE_CHECKING:
+    from take_root.config import ResolvedRuntimeConfig
 
 TRANSIENT_PATTERNS = (
     re.compile(r"rate[ -]?limit", re.IGNORECASE),
@@ -67,10 +71,12 @@ class BaseRuntime(ABC):
         persona: Persona,
         project_root: Path,
         config: RuntimeConfig | None = None,
+        resolved_config: ResolvedRuntimeConfig | None = None,
     ) -> None:
         self.persona = persona
         self.project_root = project_root
         self.config = config if config is not None else RuntimeConfig.from_env()
+        self.resolved_config = resolved_config
 
     @classmethod
     @abstractmethod
@@ -102,6 +108,7 @@ class BaseRuntime(ABC):
         cmd: list[str],
         cwd: Path,
         timeout_sec: int,
+        env: dict[str, str] | None = None,
     ) -> RuntimeCallResult:
         attempt = 0
         while True:
@@ -114,6 +121,7 @@ class BaseRuntime(ABC):
                     capture_output=True,
                     check=False,
                     timeout=timeout_sec,
+                    env=env,
                 )
             except subprocess.TimeoutExpired as exc:
                 raise RuntimeCallError(f"timeout after {timeout_sec}s") from exc
@@ -136,3 +144,24 @@ class BaseRuntime(ABC):
             ]
             time.sleep(delay)
             attempt += 1
+
+    def _legacy_model(self) -> str | None:
+        value = self.persona.raw_frontmatter.get("model")
+        if isinstance(value, str) and value:
+            return value
+        return None
+
+    def _legacy_reasoning(self) -> str | None:
+        value = self.persona.raw_frontmatter.get("reasoning")
+        if isinstance(value, str) and value:
+            return value
+        return None
+
+    def _subprocess_env(self) -> dict[str, str]:
+        env = os.environ.copy()
+        if self.resolved_config is None:
+            return env
+        for key in self.resolved_config.cleared_env_vars:
+            env.pop(key, None)
+        env.update(self.resolved_config.env)
+        return env

@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 import subprocess
+import time
 from pathlib import Path
 
-from take_root.errors import ConfigError
+from take_root.errors import ConfigError, RuntimeCallError
 from take_root.runtimes.base import BaseRuntime, RuntimeCallResult
 
 CODEX_REASONING_ALLOWED = {"minimal", "low", "medium", "high"}
@@ -33,17 +34,41 @@ class CodexRuntime(BaseRuntime):
         cwd: Path,
         timeout_sec: int = 3600,
     ) -> RuntimeCallResult:
-        cmd = [
-            "codex",
-            "exec",
-            "--skip-git-repo-check",
-            "-m",
-            self.persona.model,
-            "-c",
-            f"developer_instructions={_as_toml_string(self.persona.system_prompt)}",
-        ]
-        if self.persona.reasoning:
-            effort = self.persona.reasoning.lower()
+        cmd = self._build_common_args(interactive=False)
+        cmd.append(boot_message)
+        return self._run_noninteractive_with_policy(
+            cmd,
+            cwd,
+            timeout_sec,
+            env=self._subprocess_env(),
+        )
+
+    def _build_common_args(self, *, interactive: bool) -> list[str]:
+        model = (
+            self.resolved_config.resolved_model
+            if self.resolved_config is not None
+            else self._legacy_model()
+        )
+        if not model:
+            raise ConfigError("CodexRuntime 缺少 resolved model，请先执行 `take-root configure`")
+        cmd = ["codex"]
+        if not interactive:
+            cmd.extend(["exec", "--skip-git-repo-check"])
+        cmd.extend(
+            [
+                "-m",
+                model,
+                "-c",
+                f"developer_instructions={_as_toml_string(self.persona.system_prompt)}",
+            ]
+        )
+        raw_effort = (
+            self.resolved_config.effort
+            if self.resolved_config is not None
+            else self._legacy_reasoning()
+        )
+        if raw_effort:
+            effort = raw_effort.lower()
             if effort in CODEX_REASONING_ALLOWED:
                 cmd.extend(
                     [
@@ -51,13 +76,29 @@ class CodexRuntime(BaseRuntime):
                         f"model_reasoning_effort={_as_toml_string(effort)}",
                     ]
                 )
-        cmd.append(boot_message)
-        return self._run_noninteractive_with_policy(cmd, cwd, timeout_sec)
+        return cmd
 
     def call_interactive(
         self,
         boot_message: str,
         cwd: Path,
     ) -> RuntimeCallResult:
-        del boot_message, cwd
-        raise NotImplementedError("CodexRuntime does not support interactive mode in take-root v1")
+        started = time.monotonic()
+        cmd = self._build_common_args(interactive=True)
+        cmd.append(boot_message)
+        completed = subprocess.run(
+            cmd,
+            cwd=cwd,
+            text=True,
+            check=False,
+            env=self._subprocess_env(),
+        )
+        duration = time.monotonic() - started
+        if completed.returncode != 0:
+            raise RuntimeCallError(f"interactive Codex exited with code {completed.returncode}")
+        return RuntimeCallResult(
+            exit_code=completed.returncode,
+            stdout="",
+            stderr="",
+            duration_sec=duration,
+        )

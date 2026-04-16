@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from take_root.artifacts import artifact_path
+from take_root.config import TakeRootConfig, require_config, resolve_persona_runtime_config
 from take_root.errors import ConfigError
 from take_root.persona import Persona, find_harness_root, load_persona
 from take_root.phases import format_boot_message, validate_artifact
@@ -18,12 +19,27 @@ from take_root.ui import ask, info, warn
 MAX_PLAN_ROUNDS = 5
 
 
-def _runtime_for(persona: Persona, project_root: Path) -> BaseRuntime:
-    if persona.runtime == "claude":
-        return ClaudeRuntime(persona, project_root)
-    if persona.runtime == "codex":
-        return CodexRuntime(persona, project_root)
-    raise ConfigError(f"Unsupported runtime: {persona.runtime}")
+def _runtime_for(
+    persona: Persona,
+    project_root: Path,
+    config: TakeRootConfig,
+) -> BaseRuntime:
+    resolved_config = resolve_persona_runtime_config(config, persona.name)
+    if resolved_config.runtime_name == "claude":
+        return ClaudeRuntime(persona, project_root, resolved_config=resolved_config)
+    if resolved_config.runtime_name == "codex":
+        return CodexRuntime(persona, project_root, resolved_config=resolved_config)
+    raise ConfigError(f"Unsupported runtime: {resolved_config.runtime_name}")
+
+
+def _check_runtime_available(runtime_name: str) -> None:
+    if runtime_name == "claude":
+        ClaudeRuntime.check_available()
+        return
+    if runtime_name == "codex":
+        CodexRuntime.check_available()
+        return
+    raise ConfigError(f"Unsupported runtime: {runtime_name}")
 
 
 def _is_claude_stale(project_root: Path) -> bool:
@@ -82,6 +98,7 @@ def run_plan(
 ) -> dict[str, Any]:
     if max_rounds < 1 or max_rounds > MAX_PLAN_ROUNDS:
         raise ConfigError(f"--max-rounds must be 1..{MAX_PLAN_ROUNDS}")
+    config = require_config(project_root)
     _maybe_refresh_claude_md(project_root)
     state = reconcile_state_from_disk(project_root)
     if not bool(state["phases"]["init"]["done"]):
@@ -91,7 +108,8 @@ def run_plan(
     jeff = load_persona("jeff", project_root, harness_root=harness_root)
     robin = load_persona("robin", project_root, harness_root=harness_root)
     jack = load_persona("jack", project_root, harness_root=harness_root)
-    ClaudeRuntime.check_available()
+    for persona in (jeff, robin, jack):
+        _check_runtime_available(resolve_persona_runtime_config(config, persona.name).runtime_name)
 
     plan_dir = project_root / ".take_root" / "plan"
     jeff_path = plan_dir / "jeff_proposal.md"
@@ -99,7 +117,7 @@ def run_plan(
 
     if not jeff_path.exists():
         info("[plan] Jeff 交互阶段开始")
-        jeff_runtime = _runtime_for(jeff, project_root)
+        jeff_runtime = _runtime_for(jeff, project_root, config)
         boot = format_boot_message(
             "jeff",
             project_root=str(project_root.resolve()),
@@ -144,7 +162,7 @@ def run_plan(
         )
         if not robin_path.exists():
             info(f"[plan r{round_num}] Robin 评审中...")
-            robin_runtime = _runtime_for(robin, project_root)
+            robin_runtime = _runtime_for(robin, project_root, config)
             robin_boot = format_boot_message(
                 "robin",
                 mode="review_round",
@@ -165,7 +183,7 @@ def run_plan(
         prior_robin_plus = [*prior_robin, str(robin_path.resolve())]
         if not jack_path.exists():
             info(f"[plan r{round_num}] Jack 攻防评审中...")
-            jack_runtime = _runtime_for(jack, project_root)
+            jack_runtime = _runtime_for(jack, project_root, config)
             jack_boot = format_boot_message(
                 "jack",
                 mode="review_round",
@@ -211,7 +229,7 @@ def run_plan(
     final_plan = plan_dir / "final_plan.md"
     if not final_plan.exists():
         info("[plan] Robin 最终方案收敛输出中...")
-        robin_runtime = _runtime_for(robin, project_root)
+        robin_runtime = _runtime_for(robin, project_root, config)
         rounds_used = len(rounds)
         finalize_boot = format_boot_message(
             "robin",

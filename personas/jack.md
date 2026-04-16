@@ -2,8 +2,6 @@
 name: jack
 role: adversarial reviewer
 runtime: claude
-model: claude-opus-4-6
-reasoning: medium
 interactive: false
 output_artifacts:
   - .take_root/plan/jack_r{N}.md

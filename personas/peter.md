@@ -1,9 +1,7 @@
 ---
 name: peter
 role: code reviewer
-runtime: codex
-model: gpt-5.4
-reasoning: high
+runtime: claude
 interactive: false
 output_artifacts:
   - .take_root/code/peter_r{N}.md

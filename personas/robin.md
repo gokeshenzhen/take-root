@@ -2,8 +2,6 @@
 name: robin
 role: independent reviewer & plan owner
 runtime: claude
-model: claude-opus-4-6
-reasoning: medium
 interactive: false
 output_artifacts:
   - .take_root/plan/robin_r{N}.md

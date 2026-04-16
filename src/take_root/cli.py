@@ -7,8 +7,10 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from take_root.artifacts import list_artifact_files
+from take_root.doctor import run_doctor
 from take_root.errors import ArtifactError, RuntimeCallError, TakeRootError, UserAbort
 from take_root.phases.code import run_code
+from take_root.phases.configure import run_configure
 from take_root.phases.init import run_init
 from take_root.phases.plan import run_plan
 from take_root.phases.test import run_test
@@ -48,6 +50,23 @@ def build_parser() -> argparse.ArgumentParser:
     init_parser = subparsers.add_parser("init", help="初始化 take-root 目录与上下文")
     init_parser.add_argument("--refresh", action="store_true", help="刷新 CLAUDE.md")
     init_parser.add_argument("--no-gitignore", action="store_true", help="不修改 .gitignore")
+
+    configure_parser = subparsers.add_parser("configure", help="配置 provider/model 路由")
+    configure_parser.add_argument("--reset", action="store_true", help="重置为默认配置后再编辑")
+    configure_parser.add_argument(
+        "--section",
+        choices=["providers", "init", "personas"],
+        default=None,
+        help="仅编辑指定配置段",
+    )
+
+    doctor_parser = subparsers.add_parser("doctor", help="诊断 persona 实际 runtime 路由")
+    doctor_parser.add_argument(
+        "--persona",
+        required=True,
+        help="persona 名称，或 all 检查所有 persona",
+    )
+    doctor_parser.add_argument("--no-call", action="store_true", help="只做静态诊断，不执行调用")
 
     plan_parser = subparsers.add_parser("plan", help="执行规划阶段")
     plan_parser.add_argument("--reference", action="append", default=[], type=Path, help="参考文件")
@@ -180,6 +199,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.command == "init":
             run_init(project_root, refresh=bool(args.refresh), no_gitignore=bool(args.no_gitignore))
+            return 0
+        if args.command == "configure":
+            run_configure(
+                project_root,
+                reset=bool(args.reset),
+                section=str(args.section) if args.section is not None else None,
+            )
+            return 0
+        if args.command == "doctor":
+            run_doctor(project_root, str(args.persona), no_call=bool(args.no_call))
             return 0
         if args.command == "plan":
             run_plan(

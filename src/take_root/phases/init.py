@@ -5,8 +5,11 @@ import subprocess
 from pathlib import Path
 
 from take_root.artifacts import ensure_layout
+from take_root.config import require_config, resolve_init_runtime_config
 from take_root.persona import Persona
+from take_root.runtimes.base import BaseRuntime
 from take_root.runtimes.claude import ClaudeRuntime
+from take_root.runtimes.codex import CodexRuntime
 from take_root.state import load_or_create_state, transition
 from take_root.ui import info, warn
 
@@ -31,28 +34,34 @@ REFRESH_SUFFIX = (
 
 
 def _build_init_persona() -> Persona:
-    model = os.getenv("TAKE_ROOT_INIT_MODEL", "claude-opus-4-6")
     return Persona(
         name="init",
         role="bootstrap",
         runtime="claude",
-        model=model,
-        reasoning="medium",
         interactive=False,
         output_artifacts=["CLAUDE.md"],
         system_prompt=INIT_SYSTEM_PROMPT,
         source_path=Path("<generated>"),
-        raw_frontmatter={},
+        raw_frontmatter={"model": os.getenv("TAKE_ROOT_INIT_MODEL", "Opus"), "reasoning": "medium"},
     )
 
 
 def _generate_claude_md(project_root: Path, refresh: bool) -> str:
-    runtime = ClaudeRuntime(_build_init_persona(), project_root)
+    config = require_config(project_root)
+    resolved = resolve_init_runtime_config(config)
+    persona = _build_init_persona()
+    runtime: BaseRuntime
+    if resolved.runtime_name == "claude":
+        runtime = ClaudeRuntime(persona, project_root, resolved_config=resolved)
+    elif resolved.runtime_name == "codex":
+        runtime = CodexRuntime(persona, project_root, resolved_config=resolved)
+    else:
+        raise RuntimeError(f"unsupported init runtime: {resolved.runtime_name}")
     prompt = INIT_USER_PROMPT + (REFRESH_SUFFIX if refresh else "")
     result = runtime.call_noninteractive(prompt, cwd=project_root, timeout_sec=900)
     content = result.stdout.strip()
     if not content:
-        raise RuntimeError("Claude returned empty CLAUDE.md content")
+        raise RuntimeError("init runtime returned empty CLAUDE.md content")
     return content + "\n"
 
 
@@ -90,9 +99,15 @@ def _git_exists(project_root: Path) -> bool:
 def run_init(
     project_root: Path, refresh: bool = False, no_gitignore: bool = False
 ) -> dict[str, object]:
+    resolved = resolve_init_runtime_config(require_config(project_root))
     ensure_layout(project_root)
     state = load_or_create_state(project_root)
-    ClaudeRuntime.check_available()
+    if resolved.runtime_name == "claude":
+        ClaudeRuntime.check_available()
+    elif resolved.runtime_name == "codex":
+        CodexRuntime.check_available()
+    else:
+        raise RuntimeError(f"unsupported init runtime: {resolved.runtime_name}")
 
     claude_md = project_root / "CLAUDE.md"
     if not claude_md.exists() or refresh:

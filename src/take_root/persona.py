@@ -18,8 +18,6 @@ class Persona:
     name: str
     role: str
     runtime: str
-    model: str
-    reasoning: str | None
     interactive: bool
     output_artifacts: list[str]
     system_prompt: str
@@ -55,7 +53,7 @@ def _normalize_output_artifacts(meta: dict[str, Any]) -> list[str]:
 
 
 def _validate_required_keys(meta: dict[str, Any]) -> None:
-    required = ["name", "role", "runtime", "model", "interactive"]
+    required = ["name", "role", "runtime", "interactive"]
     missing = [key for key in required if key not in meta]
     if missing:
         raise ConfigError(f"Missing persona frontmatter keys: {', '.join(missing)}")
@@ -71,8 +69,6 @@ def _to_persona(path: Path) -> Persona:
     name = meta["name"]
     role = meta["role"]
     runtime = meta["runtime"]
-    model = meta["model"]
-    reasoning = meta.get("reasoning")
     interactive = meta["interactive"]
     if not isinstance(name, str) or not name:
         raise ConfigError(f"Invalid persona name in {path}")
@@ -80,10 +76,6 @@ def _to_persona(path: Path) -> Persona:
         raise ConfigError(f"Invalid persona role in {path}")
     if not isinstance(runtime, str) or runtime not in VALID_RUNTIMES:
         raise ConfigError(f"Invalid runtime in {path}: {runtime!r}")
-    if not isinstance(model, str) or not model:
-        raise ConfigError(f"Invalid model in {path}")
-    if reasoning is not None and not isinstance(reasoning, str):
-        raise ConfigError(f"Invalid reasoning in {path}")
     if not isinstance(interactive, bool):
         raise ConfigError(f"Invalid interactive flag in {path}")
     output_artifacts = _normalize_output_artifacts(meta)
@@ -91,8 +83,6 @@ def _to_persona(path: Path) -> Persona:
         name=name,
         role=role,
         runtime=runtime,
-        model=model,
-        reasoning=reasoning,
         interactive=interactive,
         output_artifacts=output_artifacts,
         system_prompt=parsed.body.lstrip("\n"),

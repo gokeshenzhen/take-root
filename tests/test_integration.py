@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 
 from take_root.cli import main
+from take_root.config import default_take_root_config, save_config
 from take_root.phases.init import run_init
 from take_root.phases.plan import run_plan
 from take_root.runtimes.base import RuntimeCallResult
@@ -22,6 +23,8 @@ def _skip_if_disabled() -> None:
 
 def test_init_fresh_project_mocked(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _skip_if_disabled()
+    save_config(tmp_path, default_take_root_config())
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN_QWEN", "abcd1234token")
     monkeypatch.setattr("take_root.phases.init.ClaudeRuntime.check_available", lambda: None)
     monkeypatch.setattr(
         "take_root.phases.init._generate_claude_md",
@@ -34,6 +37,9 @@ def test_init_fresh_project_mocked(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
 
 def test_plan_phase_with_mocked_runtimes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _skip_if_disabled()
+    save_config(tmp_path, default_take_root_config())
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN_QWEN", "abcd1234token")
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN_KIMI", "moonshot-token")
     load_or_create_state(tmp_path)
     transition(
         tmp_path,
@@ -132,7 +138,8 @@ def test_plan_phase_with_mocked_runtimes(monkeypatch: pytest.MonkeyPatch, tmp_pa
             return RuntimeCallResult(0, "", "", 0.1)
 
     monkeypatch.setattr(
-        "take_root.phases.plan._runtime_for", lambda persona, project_root: FakeRuntime()
+        "take_root.phases.plan._runtime_for",
+        lambda persona, project_root, config: FakeRuntime(),
     )
     state = run_plan(tmp_path, max_rounds=2)
     assert state["phases"]["plan"]["status"] == "done"

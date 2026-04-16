@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from take_root.artifacts import artifact_path
+from take_root.config import TakeRootConfig, require_config, resolve_persona_runtime_config
 from take_root.errors import ConfigError
 from take_root.persona import Persona, find_harness_root, load_persona
 from take_root.phases import format_boot_message, validate_artifact
@@ -17,12 +18,27 @@ from take_root.vcs import VCSHandler, select_vcs_mode
 MAX_CODE_ROUNDS = 5
 
 
-def _runtime_for(persona: Persona, project_root: Path) -> BaseRuntime:
-    if persona.runtime == "claude":
-        return ClaudeRuntime(persona, project_root)
-    if persona.runtime == "codex":
-        return CodexRuntime(persona, project_root)
-    raise ConfigError(f"Unsupported runtime: {persona.runtime}")
+def _runtime_for(
+    persona: Persona,
+    project_root: Path,
+    config: TakeRootConfig,
+) -> BaseRuntime:
+    resolved_config = resolve_persona_runtime_config(config, persona.name)
+    if resolved_config.runtime_name == "claude":
+        return ClaudeRuntime(persona, project_root, resolved_config=resolved_config)
+    if resolved_config.runtime_name == "codex":
+        return CodexRuntime(persona, project_root, resolved_config=resolved_config)
+    raise ConfigError(f"Unsupported runtime: {resolved_config.runtime_name}")
+
+
+def _check_runtime_available(runtime_name: str) -> None:
+    if runtime_name == "claude":
+        ClaudeRuntime.check_available()
+        return
+    if runtime_name == "codex":
+        CodexRuntime.check_available()
+        return
+    raise ConfigError(f"Unsupported runtime: {runtime_name}")
 
 
 def _relative(path: Path, project_root: Path) -> str:
@@ -64,6 +80,7 @@ def run_code(
 ) -> dict[str, Any]:
     if max_rounds < 1 or max_rounds > MAX_CODE_ROUNDS:
         raise ConfigError(f"--max-rounds must be 1..{MAX_CODE_ROUNDS}")
+    config = require_config(project_root)
     state = reconcile_state_from_disk(project_root)
     if state["phases"]["plan"]["status"] != "done":
         raise ConfigError("请先完成 plan 阶段")
@@ -71,7 +88,8 @@ def run_code(
     harness_root = find_harness_root()
     ruby = load_persona("ruby", project_root, harness_root=harness_root)
     peter = load_persona("peter", project_root, harness_root=harness_root)
-    CodexRuntime.check_available()
+    for persona in (ruby, peter):
+        _check_runtime_available(resolve_persona_runtime_config(config, persona.name).runtime_name)
 
     final_plan = (
         plan_file
@@ -114,7 +132,7 @@ def run_code(
 
         if not ruby_path.exists():
             info(f"[code r{round_num}] Ruby 实现中...")
-            ruby_runtime = _runtime_for(ruby, project_root)
+            ruby_runtime = _runtime_for(ruby, project_root, config)
             ruby_boot = format_boot_message(
                 "ruby",
                 mode="implement",
@@ -166,7 +184,7 @@ def run_code(
 
         if not peter_path.exists():
             info(f"[code r{round_num}] Peter 评审中...")
-            peter_runtime = _runtime_for(peter, project_root)
+            peter_runtime = _runtime_for(peter, project_root, config)
             review_range = _review_range(mode_name, rounds, current_round)
             peter_boot_kwargs: dict[str, Any] = {
                 "mode": "review_round",

@@ -28,14 +28,26 @@ class ClaudeRuntime(BaseRuntime):
             raise ConfigError("Claude CLI not available: run `claude --version` to verify install")
 
     def _build_common_args(self) -> list[str]:
+        model = (
+            self.resolved_config.resolved_model
+            if self.resolved_config is not None
+            else self._legacy_model()
+        )
+        if not model:
+            raise ConfigError("ClaudeRuntime 缺少 resolved model，请先执行 `take-root configure`")
         args = [
             "--append-system-prompt",
             self.persona.system_prompt,
             "--model",
-            self.persona.model,
+            model,
         ]
-        if self.persona.reasoning:
-            effort = CLAUDE_REASONING_MAP.get(self.persona.reasoning.lower())
+        raw_effort = (
+            self.resolved_config.effort
+            if self.resolved_config is not None
+            else self._legacy_reasoning()
+        )
+        if raw_effort:
+            effort = CLAUDE_REASONING_MAP.get(raw_effort.lower())
             if effort:
                 args.extend(["--effort", effort])
         return args
@@ -47,7 +59,12 @@ class ClaudeRuntime(BaseRuntime):
         timeout_sec: int = 3600,
     ) -> RuntimeCallResult:
         cmd = ["claude", "-p", boot_message, *self._build_common_args()]
-        return self._run_noninteractive_with_policy(cmd, cwd, timeout_sec)
+        return self._run_noninteractive_with_policy(
+            cmd,
+            cwd,
+            timeout_sec,
+            env=self._subprocess_env(),
+        )
 
     def call_interactive(
         self,
@@ -61,6 +78,7 @@ class ClaudeRuntime(BaseRuntime):
             cwd=cwd,
             text=True,
             check=False,
+            env=self._subprocess_env(),
         )
         duration = time.monotonic() - started
         if completed.returncode != 0:

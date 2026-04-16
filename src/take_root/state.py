@@ -88,7 +88,7 @@ def default_state(project_root: Path) -> dict[str, Any]:
 def ensure_take_root_dirs(project_root: Path) -> None:
     root = take_root_dir(project_root)
     root.mkdir(parents=True, exist_ok=True)
-    for phase in ("plan", "code", "test"):
+    for phase in ("plan", "code", "test", "doctor"):
         (root / phase).mkdir(parents=True, exist_ok=True)
     (root / "personas").mkdir(parents=True, exist_ok=True)
     (root / "code" / "snapshots").mkdir(parents=True, exist_ok=True)
