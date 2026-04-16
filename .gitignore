@@ -6,3 +6,6 @@ __pycache__/
 *.pyo
 *.swp
 src/take_root.egg-info/
+.take_root/
+REVIEW_NOTES.md
+.plan
