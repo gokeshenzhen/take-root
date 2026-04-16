@@ -55,7 +55,7 @@ def _write_jeff(path: Path) -> None:
     )
 
 
-def _write_robin(path: Path, round_num: int) -> None:
+def _write_robin(path: Path, round_num: int, *, status: str = "converged") -> None:
     response = ""
     if round_num > 1:
         response = "## 1. 对 Jack 的回应\n### J1.1: 回应\n- **立场**: 同意\n\n"
@@ -64,10 +64,10 @@ def _write_robin(path: Path, round_num: int) -> None:
             "---\n"
             "artifact: robin_review\n"
             f"round: {round_num}\n"
-            "status: converged\n"
+            f"status: {status}\n"
             f"addresses: {'jack_r1.md' if round_num > 1 else 'jeff_proposal.md'}\n"
             "created_at: 2026-04-16T00:00:00Z\n"
-            "remaining_concerns: 0\n"
+            f"remaining_concerns: {0 if status == 'converged' else 1}\n"
             "---\n"
             f"# Robin — Round {round_num} Review\n\n"
             f"{response}"
@@ -81,9 +81,17 @@ def _write_robin(path: Path, round_num: int) -> None:
     )
 
 
-def _write_jack(path: Path, round_num: int) -> None:
+def _write_jack(
+    path: Path,
+    round_num: int,
+    *,
+    status: str = "converged",
+    include_round_response: bool | None = None,
+) -> None:
+    if include_round_response is None:
+        include_round_response = round_num > 1
     disposition = ""
-    if round_num > 1:
+    if include_round_response:
         disposition = (
             "## 1. 对 Robin 上轮回应的处置\n"
             "### J1.1 → 本轮处置: conceded\n"
@@ -94,10 +102,10 @@ def _write_jack(path: Path, round_num: int) -> None:
             "---\n"
             "artifact: jack_review\n"
             f"round: {round_num}\n"
-            "status: converged\n"
+            f"status: {status}\n"
             f"addresses: robin_r{round_num}.md\n"
             "created_at: 2026-04-16T00:00:00Z\n"
-            "open_attacks: 0\n"
+            f"open_attacks: {0 if status == 'converged' else 1}\n"
             "---\n"
             f"# Jack — Round {round_num} Adversarial Review\n\n"
             f"{disposition}"
@@ -109,6 +117,11 @@ def _write_jack(path: Path, round_num: int) -> None:
         ),
         encoding="utf-8",
     )
+
+
+def _round_num_from_output_path(path: Path) -> int:
+    stem = path.stem
+    return int(stem.rsplit("r", 1)[1])
 
 
 def _write_final_plan(path: Path) -> None:
@@ -143,12 +156,16 @@ class _RuntimeHarness:
         *,
         recorder: list[dict[str, Any]],
         extra_file_actor: str | None = None,
+        doctor_file_actor: str | None = None,
         malformed_actor: str | None = None,
+        retry_invalid_actor: str | None = None,
         late_error_actor: str | None = None,
     ) -> None:
         self.recorder = recorder
         self.extra_file_actor = extra_file_actor
+        self.doctor_file_actor = doctor_file_actor
         self.malformed_actor = malformed_actor
+        self.retry_invalid_actor = retry_invalid_actor
         self.late_error_actor = late_error_actor
 
     def build(self, persona_name: str) -> _FakeRuntime:
@@ -156,7 +173,9 @@ class _RuntimeHarness:
             persona_name=persona_name,
             recorder=self.recorder,
             extra_file_actor=self.extra_file_actor,
+            doctor_file_actor=self.doctor_file_actor,
             malformed_actor=self.malformed_actor,
+            retry_invalid_actor=self.retry_invalid_actor,
             late_error_actor=self.late_error_actor,
         )
 
@@ -168,14 +187,19 @@ class _FakeRuntime:
         persona_name: str,
         recorder: list[dict[str, Any]],
         extra_file_actor: str | None,
+        doctor_file_actor: str | None,
         malformed_actor: str | None,
+        retry_invalid_actor: str | None,
         late_error_actor: str | None,
     ) -> None:
         self.persona_name = persona_name
         self.recorder = recorder
         self.extra_file_actor = extra_file_actor
+        self.doctor_file_actor = doctor_file_actor
         self.malformed_actor = malformed_actor
+        self.retry_invalid_actor = retry_invalid_actor
         self.late_error_actor = late_error_actor
+        self.retry_invalid_emitted = False
 
     def call_interactive(self, boot_message: str, cwd: Path) -> RuntimeCallResult:
         del boot_message
@@ -206,27 +230,45 @@ class _FakeRuntime:
             extra = cwd / "src" / f"{self.persona_name}_forbidden.py"
             extra.parent.mkdir(parents=True, exist_ok=True)
             extra.write_text("x = 1\n", encoding="utf-8")
+        if self.persona_name == self.doctor_file_actor:
+            doctor_file = cwd / ".take_root" / "doctor" / f"{self.persona_name}_report.md"
+            doctor_file.parent.mkdir(parents=True, exist_ok=True)
+            doctor_file.write_text("# doctor artifact\n", encoding="utf-8")
         if output_path.name.startswith("robin_r"):
+            round_num = _round_num_from_output_path(output_path)
             if self.persona_name == self.malformed_actor:
                 output_path.write_text(
                     (
                         "---\n"
                         "artifact: robin_review\n"
-                        "round: 1\n"
+                        f"round: {round_num}\n"
                         "status: converged\n"
-                        "addresses: jeff_proposal.md\n"
+                        f"addresses: {'jack_r1.md' if round_num > 1 else 'jeff_proposal.md'}\n"
                         "created_at: 2026-04-16T00:00:00Z\n"
                         "remaining_concerns: 0\n"
                         "---\n"
-                        "# Robin — Round 1 Review\n\n"
+                        f"# Robin — Round {round_num} Review\n\n"
                         "## 2. 新发现 / 我的关切\n"
                     ),
                     encoding="utf-8",
                 )
             else:
-                _write_robin(output_path, round_num=1)
+                _write_robin(output_path, round_num=round_num)
         elif output_path.name.startswith("jack_r"):
-            _write_jack(output_path, round_num=1)
+            round_num = _round_num_from_output_path(output_path)
+            if (
+                self.persona_name == self.retry_invalid_actor
+                and round_num == 2
+                and not self.retry_invalid_emitted
+            ):
+                self.retry_invalid_emitted = True
+                _write_jack(
+                    output_path,
+                    round_num=round_num,
+                    include_round_response=False,
+                )
+            else:
+                _write_jack(output_path, round_num=round_num)
         else:
             _write_final_plan(output_path)
         if self.persona_name == self.late_error_actor:
@@ -290,6 +332,51 @@ def test_run_plan_rejects_extra_file_changes(
         assert not (tmp_path / ".take_root" / "plan" / "jack_r1.md").exists()
 
 
+def test_run_plan_ignores_doctor_artifacts_during_review_only(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _prepare_plan_project(monkeypatch, tmp_path)
+    calls: list[dict[str, Any]] = []
+    harness = _RuntimeHarness(recorder=calls, doctor_file_actor="robin")
+    monkeypatch.setattr(
+        "take_root.phases.plan._runtime_for",
+        lambda persona, project_root, config: harness.build(persona.name),
+    )
+
+    state = run_plan(tmp_path, max_rounds=2)
+
+    assert state["phases"]["plan"]["status"] == "done"
+    assert (tmp_path / ".take_root" / "doctor" / "robin_report.md").exists()
+    report_dir = tmp_path / ".take_root" / "plan" / "policy_violations"
+    assert not report_dir.exists()
+
+
+def test_run_plan_retries_invalid_jack_round_artifact_once(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _prepare_plan_project(monkeypatch, tmp_path)
+    plan_dir = tmp_path / ".take_root" / "plan"
+    _write_jeff(plan_dir / "jeff_proposal.md")
+    _write_robin(plan_dir / "robin_r1.md", round_num=1, status="ongoing")
+    _write_jack(plan_dir / "jack_r1.md", round_num=1, status="ongoing")
+
+    calls: list[dict[str, Any]] = []
+    harness = _RuntimeHarness(recorder=calls, retry_invalid_actor="jack")
+    monkeypatch.setattr(
+        "take_root.phases.plan._runtime_for",
+        lambda persona, project_root, config: harness.build(persona.name),
+    )
+
+    state = run_plan(tmp_path, max_rounds=2)
+
+    assert state["phases"]["plan"]["status"] == "done"
+    assert (plan_dir / "jack_r2.md").exists()
+    jack_r2_calls = [call for call in calls if call["output_path"] == plan_dir / "jack_r2.md"]
+    assert len(jack_r2_calls) == 2
+    stderr = capsys.readouterr().err
+    assert "produced an invalid artifact on attempt 1" in stderr
+
+
 def test_run_plan_rejects_malformed_robin_artifact(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -345,3 +432,86 @@ def test_run_plan_accepts_valid_artifact_after_runtime_error(
     assert (tmp_path / ".take_root" / "plan" / "robin_r1.md").exists()
     stderr = capsys.readouterr().err
     assert "runtime exited with an error after producing a valid artifact" in stderr
+
+
+def test_run_plan_restarts_from_r1_after_stale_state_is_reconciled(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _prepare_plan_project(monkeypatch, tmp_path)
+    _write_jeff(tmp_path / ".take_root" / "plan" / "jeff_proposal.md")
+    transition(
+        tmp_path,
+        {
+            "phases": {
+                "plan": {
+                    "status": "in_progress",
+                    "jeff_done": True,
+                    "jeff_proposal_path": ".take_root/plan/jeff_proposal.md",
+                    "current_round": 5,
+                    "rounds": [
+                        {
+                            "n": 1,
+                            "robin_path": ".take_root/plan/robin_r1.md",
+                            "robin_status": "ongoing",
+                            "jack_path": ".take_root/plan/jack_r1.md",
+                            "jack_status": "ongoing",
+                        },
+                        {
+                            "n": 2,
+                            "robin_path": ".take_root/plan/robin_r2.md",
+                            "robin_status": "ongoing",
+                            "jack_path": ".take_root/plan/jack_r2.md",
+                            "jack_status": "ongoing",
+                        },
+                        {
+                            "n": 3,
+                            "robin_path": ".take_root/plan/robin_r3.md",
+                            "robin_status": "ongoing",
+                            "jack_path": ".take_root/plan/jack_r3.md",
+                            "jack_status": "ongoing",
+                        },
+                        {
+                            "n": 4,
+                            "robin_path": ".take_root/plan/robin_r4.md",
+                            "robin_status": "ongoing",
+                            "jack_path": ".take_root/plan/jack_r4.md",
+                            "jack_status": "ongoing",
+                        },
+                    ],
+                }
+            }
+        },
+    )
+    calls: list[dict[str, Any]] = []
+    harness = _RuntimeHarness(recorder=calls)
+    monkeypatch.setattr(
+        "take_root.phases.plan._runtime_for",
+        lambda persona, project_root, config: harness.build(persona.name),
+    )
+
+    run_plan(tmp_path, max_rounds=2)
+
+    assert calls[0]["output_path"] == tmp_path / ".take_root" / "plan" / "robin_r1.md"
+    assert calls[1]["output_path"] == tmp_path / ".take_root" / "plan" / "jack_r1.md"
+
+
+def test_run_plan_resumes_incomplete_round_from_missing_jack_artifact(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _prepare_plan_project(monkeypatch, tmp_path)
+    plan_dir = tmp_path / ".take_root" / "plan"
+    _write_jeff(plan_dir / "jeff_proposal.md")
+    _write_robin(plan_dir / "robin_r1.md", round_num=1, status="ongoing")
+    _write_jack(plan_dir / "jack_r1.md", round_num=1, status="ongoing")
+    _write_robin(plan_dir / "robin_r2.md", round_num=2, status="ongoing")
+
+    calls: list[dict[str, Any]] = []
+    harness = _RuntimeHarness(recorder=calls)
+    monkeypatch.setattr(
+        "take_root.phases.plan._runtime_for",
+        lambda persona, project_root, config: harness.build(persona.name),
+    )
+
+    run_plan(tmp_path, max_rounds=3)
+
+    assert calls[0]["output_path"] == plan_dir / "jack_r2.md"

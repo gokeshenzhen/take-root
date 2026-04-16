@@ -33,6 +33,8 @@ _SUSPICIOUS_LINE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ),
 )
 
+_REVIEW_ONLY_IGNORED_PREFIXES = (".take_root/doctor/",)
+
 
 @dataclass(frozen=True, slots=True)
 class WorkspaceEntry:
@@ -56,7 +58,7 @@ class WorkspaceSnapshot:
         allowed = _relative_key(self.allowed_output_path, self.root)
         changed: list[str] = []
         for rel_path in sorted(set(self.entries) | set(current.entries)):
-            if rel_path == allowed:
+            if rel_path == allowed or _is_review_only_ignored_path(rel_path):
                 continue
             before = self.entries.get(rel_path)
             after = current.entries.get(rel_path)
@@ -186,3 +188,10 @@ def _relative_key(path: Path, project_root: Path) -> str:
         return str(path.relative_to(project_root))
     except ValueError:
         return str(path.resolve().relative_to(project_root.resolve()))
+
+
+def _is_review_only_ignored_path(rel_path: str) -> bool:
+    return any(
+        rel_path == prefix.removesuffix("/") or rel_path.startswith(prefix)
+        for prefix in _REVIEW_ONLY_IGNORED_PREFIXES
+    )

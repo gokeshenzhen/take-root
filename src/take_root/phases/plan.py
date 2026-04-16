@@ -198,11 +198,118 @@ def _finalize_review_only_artifact(
     return metadata
 
 
+def _review_retry_prompt(
+    *,
+    boot_message: str,
+    output_path: Path,
+    validation_error: Exception,
+    artifact_contract: str,
+) -> str:
+    return (
+        f"{boot_message}\n\n"
+        "[take-root harness correction]\n"
+        f"Your previous artifact at output_path={output_path} failed validation: {validation_error}\n"
+        "Rewrite the artifact from scratch and overwrite output_path.\n"
+        "It must satisfy this exact required structure:\n"
+        f"{artifact_contract}\n"
+        "Do not write explanations outside the artifact."
+    )
+
+
+def _run_review_only_persona_with_validation(
+    *,
+    runtime: BaseRuntime,
+    persona: Persona,
+    project_root: Path,
+    boot_message: str,
+    output_path: Path,
+    context_files: list[Path],
+    timeout_sec: int,
+    validate: Callable[[], dict[str, Any]],
+    persona_name: str,
+    artifact_contract: str,
+    max_attempts: int = 2,
+) -> dict[str, Any]:
+    current_boot = boot_message
+    for attempt in range(1, max_attempts + 1):
+        result = _call_review_only_persona(
+            runtime=runtime,
+            persona=persona,
+            project_root=project_root,
+            boot_message=current_boot,
+            output_path=output_path,
+            context_files=context_files,
+            timeout_sec=timeout_sec,
+        )
+        try:
+            return _finalize_review_only_artifact(
+                result=result,
+                output_path=output_path,
+                validate=validate,
+                persona_name=persona_name,
+            )
+        except Exception as exc:
+            if attempt >= max_attempts:
+                raise
+            warn(
+                f"[plan] {persona_name} produced an invalid artifact on attempt {attempt}; "
+                f"retrying {output_path.name}: {exc}"
+            )
+            current_boot = _review_retry_prompt(
+                boot_message=boot_message,
+                output_path=output_path,
+                validation_error=exc,
+                artifact_contract=artifact_contract,
+            )
+    raise AssertionError("unreachable")
+
+
 def _artifact_validator(path: Path, required_keys: list[str]) -> Callable[[], dict[str, Any]]:
     def _validate() -> dict[str, Any]:
         return validate_artifact(path, required_keys)
 
     return _validate
+
+
+def _robin_artifact_contract(round_num: int) -> str:
+    headings = [f"# Robin — Round {round_num} Review"]
+    if round_num > 1:
+        headings.append("## 1. 对 Jack 的回应")
+    headings.extend(["## 2. 新发现 / 我的关切", "## 3. 收敛评估"])
+    return "\n".join(headings)
+
+
+def _jack_artifact_contract(round_num: int) -> str:
+    headings = [f"# Jack — Round {round_num} Adversarial Review"]
+    if round_num > 1:
+        headings.append("## 1. 对 Robin 上轮回应的处置")
+    headings.extend(["## 2. 新攻击点", "## 3. 收敛评估"])
+    return "\n".join(headings)
+
+
+def _final_plan_artifact_contract() -> str:
+    return "\n".join(
+        [
+            "# 最终方案：<标题>",
+            "## 1. 目标",
+            "## 2. 非目标",
+            "## 3. 背景与约束",
+            "## 4. 设计概览",
+            "## 5. 关键决策",
+            "## 6. 实施步骤",
+            "## 7. 验收标准",
+            "## 8. 已知风险与未决问题",
+        ]
+    )
+
+
+def _resume_round_from_state(rounds: list[dict[str, Any]]) -> int:
+    for index, item in enumerate(rounds, start=1):
+        if int(item.get("n", index)) != index:
+            return index
+        if "robin_path" not in item or "jack_path" not in item:
+            return index
+    return len(rounds) + 1
 
 
 def run_plan(
@@ -266,7 +373,7 @@ def run_plan(
         validate_artifact(jeff_path, ["artifact"])
 
     rounds: list[dict[str, Any]] = list(state["phases"]["plan"].get("rounds", []))
-    start_round = len(rounds) + 1
+    start_round = _resume_round_from_state(rounds)
     converged = False
     for round_num in range(start_round, max_rounds + 1):
         robin_path, jack_path = _round_paths(project_root, round_num)
@@ -289,7 +396,7 @@ def run_plan(
                 latest_jack=latest_jack,
                 output_path=str(robin_path.resolve()),
             )
-            robin_result = _call_review_only_persona(
+            robin_meta = _run_review_only_persona_with_validation(
                 runtime=robin_runtime,
                 persona=robin,
                 project_root=project_root,
@@ -304,11 +411,6 @@ def run_plan(
                     latest_peer=latest_jack,
                 ),
                 timeout_sec=900,
-            )
-            robin_meta = _finalize_review_only_artifact(
-                result=robin_result,
-                output_path=robin_path,
-                persona_name="robin",
                 validate=_artifact_validator(
                     robin_path,
                     [
@@ -320,6 +422,8 @@ def run_plan(
                         "remaining_concerns",
                     ],
                 ),
+                persona_name="robin",
+                artifact_contract=_robin_artifact_contract(round_num),
             )
         else:
             robin_meta = validate_artifact(
@@ -342,7 +446,7 @@ def run_plan(
                 latest_robin=str(robin_path.resolve()),
                 output_path=str(jack_path.resolve()),
             )
-            jack_result = _call_review_only_persona(
+            jack_meta = _run_review_only_persona_with_validation(
                 runtime=jack_runtime,
                 persona=jack,
                 project_root=project_root,
@@ -357,15 +461,12 @@ def run_plan(
                     latest_peer=str(robin_path.resolve()),
                 ),
                 timeout_sec=900,
-            )
-            jack_meta = _finalize_review_only_artifact(
-                result=jack_result,
-                output_path=jack_path,
-                persona_name="jack",
                 validate=_artifact_validator(
                     jack_path,
                     ["artifact", "round", "status", "addresses", "created_at", "open_attacks"],
                 ),
+                persona_name="jack",
+                artifact_contract=_jack_artifact_contract(round_num),
             )
         else:
             jack_meta = validate_artifact(
@@ -416,7 +517,7 @@ def run_plan(
             ],
             output_path=str(final_plan.resolve()),
         )
-        final_result = _call_review_only_persona(
+        _run_review_only_persona_with_validation(
             runtime=robin_runtime,
             persona=robin,
             project_root=project_root,
@@ -434,11 +535,6 @@ def run_plan(
                 ],
             ),
             timeout_sec=900,
-        )
-        _finalize_review_only_artifact(
-            result=final_result,
-            output_path=final_plan,
-            persona_name="robin",
             validate=_artifact_validator(
                 final_plan,
                 [
@@ -451,6 +547,8 @@ def run_plan(
                     "created_at",
                 ],
             ),
+            persona_name="robin",
+            artifact_contract=_final_plan_artifact_contract(),
         )
     else:
         validate_artifact(
