@@ -197,3 +197,66 @@ def test_resume_dispatches_to_pending_phase(
     rc = main(["--project", str(tmp_path), "resume"])
     assert rc == 0
     assert called["code"] is True
+
+
+def test_run_on_code_exhausted_stops_before_test(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _skip_if_disabled()
+    phases_called: list[str] = []
+    monkeypatch.setattr(
+        "take_root.cli.load_or_create_state",
+        lambda project_root: {"phases": {"init": {"done": True}}},
+    )
+
+    def _fake_run_phase(name: str, project_root: Path, args: Any) -> dict[str, Any]:
+        del project_root, args
+        phases_called.append(name)
+        if name == "code":
+            return {
+                "phases": {
+                    "code": {
+                        "result": "exhausted_stop",
+                        "next_action": "take-root code --max-rounds 6",
+                    }
+                }
+            }
+        raise AssertionError("test phase should not run after exhausted_stop")
+
+    monkeypatch.setattr("take_root.cli._run_phase", _fake_run_phase)
+
+    rc = main(["--project", str(tmp_path), "run", "--phases", "code,test", "--no-checkpoint"])
+
+    assert rc == 0
+    assert phases_called == ["code"]
+
+
+def test_status_summary_view(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _skip_if_disabled()
+    state = {
+        "current_phase": "code",
+        "phases": {
+            "plan": {"status": "done", "final_plan_path": ".take_root/plan/final_plan.md"},
+            "code": {
+                "status": "done",
+                "result": "exhausted_stop",
+                "advance_allowed": False,
+                "next_action": "take-root code --max-rounds 6",
+                "last_max_rounds": 5,
+                "rounds": [],
+            },
+            "test": {"status": "not_started", "iterations": [], "all_pass": False},
+        },
+    }
+    monkeypatch.setattr("take_root.cli.reconcile_state_from_disk", lambda project_root: state)
+
+    rc = main(["--project", str(tmp_path), "status"])
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert "当前结论: blocked" in captured.out
+    assert "下一步: take-root code --max-rounds 6" in captured.out

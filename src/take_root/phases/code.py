@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from take_root.artifacts import artifact_path
 from take_root.config import TakeRootConfig, require_config, resolve_persona_runtime_config
@@ -12,10 +12,11 @@ from take_root.runtimes.base import BaseRuntime
 from take_root.runtimes.claude import ClaudeRuntime
 from take_root.runtimes.codex import CodexRuntime
 from take_root.state import reconcile_state_from_disk, transition
+from take_root.summary import write_run_summary
 from take_root.ui import info
 from take_root.vcs import VCSHandler, select_vcs_mode
 
-MAX_CODE_ROUNDS = 5
+DEFAULT_CODE_ROUNDS = 5
 
 
 def _runtime_for(
@@ -72,14 +73,27 @@ def _review_range(
     return {"prev_sha": None, "curr_sha": None, "snapshot_dirs": None}
 
 
+def _next_action_for_result(result: str, max_rounds: int) -> str | None:
+    if result in {"converged", "exhausted_advance"}:
+        return "take-root test"
+    if result == "exhausted_stop":
+        return f"take-root code --max-rounds {max_rounds + 1}"
+    if result == "in_progress":
+        return "take-root code"
+    return None
+
+
 def run_code(
     project_root: Path,
     plan_file: Path | None = None,
-    max_rounds: int = MAX_CODE_ROUNDS,
+    max_rounds: int = DEFAULT_CODE_ROUNDS,
     vcs_mode: str | None = "auto",
+    on_code_exhausted: Literal["stop", "advance"] = "stop",
 ) -> dict[str, Any]:
-    if max_rounds < 1 or max_rounds > MAX_CODE_ROUNDS:
-        raise ConfigError(f"--max-rounds must be 1..{MAX_CODE_ROUNDS}")
+    if max_rounds < 1:
+        raise ConfigError("--max-rounds must be >= 1")
+    if on_code_exhausted not in {"stop", "advance"}:
+        raise ConfigError("--on-code-exhausted 必须是 stop|advance")
     config = require_config(project_root)
     state = reconcile_state_from_disk(project_root)
     if state["phases"]["plan"]["status"] != "done":
@@ -225,13 +239,18 @@ def run_code(
         state = transition(
             project_root,
             {
+                "current_phase": "code",
                 "phases": {
                     "code": {
                         "status": "in_progress",
                         "vcs_mode": mode_name,
                         "rounds": rounds,
+                        "result": "in_progress",
+                        "advance_allowed": False,
+                        "next_action": _next_action_for_result("in_progress", max_rounds),
+                        "last_max_rounds": max_rounds,
                     }
-                }
+                },
             },
         )
         if (
@@ -245,17 +264,30 @@ def run_code(
         and rounds[-1]["ruby_status"] == "converged"
         and rounds[-1]["peter_status"] == "converged"
     )
-    return transition(
+    result = "converged"
+    advance_allowed = True
+    current_phase = "test"
+    if not converged:
+        result = "exhausted_advance" if on_code_exhausted == "advance" else "exhausted_stop"
+        advance_allowed = result == "exhausted_advance"
+        current_phase = "test" if advance_allowed else "code"
+    state = transition(
         project_root,
         {
-            "current_phase": "test",
+            "current_phase": current_phase,
             "phases": {
                 "code": {
                     "status": "done",
                     "converged": converged,
                     "rounds": rounds,
                     "vcs_mode": mode_name,
+                    "result": result,
+                    "advance_allowed": advance_allowed,
+                    "next_action": _next_action_for_result(result, max_rounds),
+                    "last_max_rounds": max_rounds,
                 }
             },
         },
     )
+    write_run_summary(project_root, state)
+    return state

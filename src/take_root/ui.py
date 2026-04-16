@@ -7,6 +7,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, TextIO
 
+from take_root.summary import build_summary_view
+
 
 def info(message: str) -> None:
     print(message, file=sys.stderr)
@@ -151,20 +153,11 @@ def checkpoint_prompt() -> str:
 
 
 def print_status(state: dict[str, Any], project_root: Path) -> None:
-    phase = state.get("current_phase", "unknown")
-    phases = state.get("phases", {})
-    plan = phases.get("plan", {})
-    code = phases.get("code", {})
-    test = phases.get("test", {})
-    if phase == "plan":
-        round_text = f"{plan.get('current_round', 1)}/5"
-    elif phase == "code":
-        rounds = code.get("rounds", [])
-        round_text = f"{len(rounds) + 1}/5"
-    elif phase == "test":
-        iters = test.get("iterations", [])
-        round_text = f"{len(iters) + 1}/{test.get('max_iterations', 5)}"
-    else:
-        round_text = "-"
+    view = build_summary_view(project_root, state)
     print(f"Project: {project_root}", file=sys.stdout)
-    print(f"Phase:   {phase} ({round_text})", file=sys.stdout)
+    print(f"当前阶段: {view['current_phase']}", file=sys.stdout)
+    print(f"当前结论: {view['workflow_status']}", file=sys.stdout)
+    print(f"原因: {view['overview']}", file=sys.stdout)
+    next_action = view.get("next_action")
+    if isinstance(next_action, str) and next_action:
+        print(f"下一步: {next_action}", file=sys.stdout)

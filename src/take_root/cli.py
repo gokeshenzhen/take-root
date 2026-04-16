@@ -5,6 +5,7 @@ import logging
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any, Literal
 
 from take_root.artifacts import list_artifact_files
 from take_root.doctor import run_doctor
@@ -16,9 +17,16 @@ from take_root.phases.plan import run_plan
 from take_root.phases.test import run_test
 from take_root.reset import run_reset
 from take_root.state import load_or_create_state, reconcile_state_from_disk
+from take_root.summary import write_run_summary
 from take_root.ui import checkpoint_prompt, error, info, print_status
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _parse_on_code_exhausted(value: object) -> Literal["stop", "advance"]:
+    if value == "advance":
+        return "advance"
+    return "stop"
 
 
 def _setup_logging(verbose: bool, log_file: Path | None) -> None:
@@ -85,6 +93,12 @@ def build_parser() -> argparse.ArgumentParser:
         default="auto",
         help="版本控制模式",
     )
+    code_parser.add_argument(
+        "--on-code-exhausted",
+        choices=["stop", "advance"],
+        default="stop",
+        help="code 达到预算但未收敛时的处理策略",
+    )
 
     test_parser = subparsers.add_parser("test", help="执行测试阶段")
     test_parser.add_argument("--max-iterations", type=int, default=5, help="Amy 最大迭代次数")
@@ -98,6 +112,12 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser = subparsers.add_parser("run", help="按顺序执行多个阶段")
     run_parser.add_argument("--phases", default="plan,code,test", help="逗号分隔：plan,code,test")
     run_parser.add_argument("--no-checkpoint", action="store_true", help="阶段间不暂停确认")
+    run_parser.add_argument(
+        "--on-code-exhausted",
+        choices=["stop", "advance"],
+        default="stop",
+        help="run 中 code 达到预算但未收敛时的处理策略",
+    )
 
     reset_parser = subparsers.add_parser("reset", help="重置或回退 take-root 状态")
     reset_group = reset_parser.add_mutually_exclusive_group()
@@ -119,7 +139,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _run_phase(name: str, project_root: Path, args: argparse.Namespace) -> dict[str, object]:
+def _run_phase(name: str, project_root: Path, args: argparse.Namespace) -> dict[str, Any]:
     if name == "plan":
         references = [path.resolve() for path in getattr(args, "reference", [])]
         return run_plan(
@@ -135,6 +155,7 @@ def _run_phase(name: str, project_root: Path, args: argparse.Namespace) -> dict[
             plan_file=plan_arg.resolve() if isinstance(plan_arg, Path) else None,
             max_rounds=int(getattr(args, "max_rounds", 5)),
             vcs_mode=str(getattr(args, "vcs", "auto")),
+            on_code_exhausted=_parse_on_code_exhausted(getattr(args, "on_code_exhausted", "stop")),
         )
     if name == "test":
         return run_test(
@@ -189,18 +210,38 @@ def _cmd_resume(project_root: Path, args: argparse.Namespace) -> int:
     del args
     state = reconcile_state_from_disk(project_root)
     current = str(state.get("current_phase", "plan"))
+    code_state = state.get("phases", {}).get("code", {})
     if current == "done":
         info("当前流程已完成，无需 resume")
         return 0
     if current == "plan":
         run_plan(project_root=project_root, reference_files=[], no_brainstorm=False, max_rounds=5)
     elif current == "code":
-        run_code(project_root=project_root, plan_file=None, max_rounds=5, vcs_mode="auto")
+        if code_state.get("result") == "exhausted_stop":
+            next_action = code_state.get("next_action") or "take-root code"
+            info(f"code 已达到预算且未允许交接到 test；下一步建议: {next_action}")
+            return 0
+        run_code(
+            project_root=project_root,
+            plan_file=None,
+            max_rounds=5,
+            vcs_mode="auto",
+            on_code_exhausted="stop",
+        )
     elif current == "test":
         run_test(project_root=project_root, max_iterations=5, escalate="auto")
     else:
         raise TakeRootError(f"未知 current_phase: {current}")
     return 0
+
+
+def _refresh_run_summary_best_effort(project_root: Path) -> None:
+    if not (project_root / ".take_root" / "state.json").exists():
+        return
+    try:
+        write_run_summary(project_root)
+    except Exception as exc:  # pragma: no cover - best effort only
+        LOGGER.warning("Failed to refresh run_summary.md: %s", exc)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -236,6 +277,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 plan_file=args.plan.resolve() if args.plan else None,
                 max_rounds=int(args.max_rounds),
                 vcs_mode=str(args.vcs),
+                on_code_exhausted=_parse_on_code_exhausted(args.on_code_exhausted),
             )
             return 0
         if args.command == "test":
@@ -251,7 +293,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 run_init(project_root)
             for phase in [item.strip() for item in str(args.phases).split(",") if item.strip()]:
                 phase_args = argparse.Namespace(**vars(args))
-                _run_phase(phase, project_root, phase_args)
+                state = _run_phase(phase, project_root, phase_args)
+                if phase == "code":
+                    code_state = state.get("phases", {}).get("code", {})
+                    if code_state.get("result") == "exhausted_stop":
+                        next_action = code_state.get("next_action") or "take-root code"
+                        info(f"code 阶段达到预算且未收敛，流程停在 code；下一步建议: {next_action}")
+                        return 0
                 if not _should_continue(bool(args.no_checkpoint)):
                     return 0
             return 0
@@ -273,24 +321,29 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_logs(project_root, args.phase, args.round)
         raise TakeRootError(f"未知子命令: {args.command}")
     except UserAbort as exc:
+        _refresh_run_summary_best_effort(project_root)
         error(str(exc))
         return 2
     except RuntimeCallError as exc:
+        _refresh_run_summary_best_effort(project_root)
         error(str(exc))
         if args.verbose:
             raise
         return 3
     except PolicyError as exc:
+        _refresh_run_summary_best_effort(project_root)
         error(str(exc))
         if args.verbose:
             raise
         return 3
     except ArtifactError as exc:
+        _refresh_run_summary_best_effort(project_root)
         error(str(exc))
         if args.verbose:
             raise
         return 4
     except TakeRootError as exc:
+        _refresh_run_summary_best_effort(project_root)
         error(str(exc))
         if args.verbose:
             raise

@@ -22,6 +22,7 @@ from take_root.runtimes.base import BaseRuntime, RuntimePolicy
 from take_root.runtimes.claude import ClaudeRuntime
 from take_root.runtimes.codex import CodexRuntime
 from take_root.state import reconcile_state_from_disk, transition
+from take_root.summary import write_run_summary
 from take_root.ui import ask, info, warn
 
 MAX_PLAN_ROUNDS = 5
@@ -208,7 +209,8 @@ def _review_retry_prompt(
     return (
         f"{boot_message}\n\n"
         "[take-root harness correction]\n"
-        f"Your previous artifact at output_path={output_path} failed validation: {validation_error}\n"
+        "Your previous artifact at "
+        f"output_path={output_path} failed validation: {validation_error}\n"
         "Rewrite the artifact from scratch and overwrite output_path.\n"
         "It must satisfy this exact required structure:\n"
         f"{artifact_contract}\n"
@@ -563,7 +565,7 @@ def run_plan(
                 "created_at",
             ],
         )
-    return transition(
+    state = transition(
         project_root,
         {
             "current_phase": "code",
@@ -576,3 +578,5 @@ def run_plan(
             },
         },
     )
+    write_run_summary(project_root, state)
+    return state

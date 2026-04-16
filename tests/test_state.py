@@ -25,6 +25,25 @@ def _write_artifact(path: Path, status: str) -> None:
     )
 
 
+def _write_final_plan(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        (
+            "---\n"
+            "artifact: final_plan\n"
+            "version: 1\n"
+            "project_root: x\n"
+            "based_on: jeff_proposal.md\n"
+            "negotiation_rounds: 1\n"
+            "converged: true\n"
+            "created_at: 2026-04-14T00:00:00Z\n"
+            "---\n"
+            "# final\n"
+        ),
+        encoding="utf-8",
+    )
+
+
 def _latest_trash_dir(project_root: Path) -> Path:
     trash_root = project_root / ".take_root" / "trash"
     snapshots = sorted(path for path in trash_root.iterdir() if path.is_dir())
@@ -115,6 +134,99 @@ def test_reconcile_state_from_disk_clears_stale_plan_rounds(tmp_path: Path) -> N
     assert result["phases"]["plan"]["rounds"] == []
     assert result["phases"]["plan"]["final_plan_path"] is None
     assert result["phases"]["plan"]["converged"] is False
+
+
+def test_reconcile_code_handoff_preserves_exhausted_stop(tmp_path: Path) -> None:
+    load_or_create_state(tmp_path)
+    _write_final_plan(tmp_path / ".take_root" / "plan" / "final_plan.md")
+    _write_artifact(tmp_path / ".take_root" / "code" / "ruby_r1.md", "ongoing")
+    _write_artifact(tmp_path / ".take_root" / "code" / "peter_r1.md", "ongoing")
+    transition(
+        tmp_path,
+        {
+            "current_phase": "code",
+            "phases": {
+                "code": {
+                    "status": "done",
+                    "result": "exhausted_stop",
+                    "advance_allowed": False,
+                    "next_action": "take-root code --max-rounds 2",
+                    "last_max_rounds": 1,
+                }
+            },
+        },
+    )
+
+    result = reconcile_state_from_disk(tmp_path)
+    code = result["phases"]["code"]
+
+    assert result["current_phase"] == "code"
+    assert code["status"] == "done"
+    assert code["result"] == "exhausted_stop"
+    assert code["advance_allowed"] is False
+    assert code["next_action"] == "take-root code --max-rounds 2"
+
+
+def test_reconcile_code_handoff_falls_back_to_in_progress_when_budget_changes(
+    tmp_path: Path,
+) -> None:
+    load_or_create_state(tmp_path)
+    _write_final_plan(tmp_path / ".take_root" / "plan" / "final_plan.md")
+    _write_artifact(tmp_path / ".take_root" / "code" / "ruby_r1.md", "ongoing")
+    _write_artifact(tmp_path / ".take_root" / "code" / "peter_r1.md", "ongoing")
+    transition(
+        tmp_path,
+        {
+            "current_phase": "code",
+            "phases": {
+                "code": {
+                    "status": "done",
+                    "result": "exhausted_stop",
+                    "advance_allowed": False,
+                    "next_action": "take-root code --max-rounds 3",
+                    "last_max_rounds": 2,
+                }
+            },
+        },
+    )
+
+    result = reconcile_state_from_disk(tmp_path)
+    code = result["phases"]["code"]
+
+    assert result["current_phase"] == "code"
+    assert code["status"] == "in_progress"
+    assert code["result"] == "in_progress"
+    assert code["advance_allowed"] is False
+
+
+def test_reconcile_code_handoff_recomputes_converged_from_artifacts(tmp_path: Path) -> None:
+    load_or_create_state(tmp_path)
+    _write_final_plan(tmp_path / ".take_root" / "plan" / "final_plan.md")
+    _write_artifact(tmp_path / ".take_root" / "code" / "ruby_r1.md", "converged")
+    _write_artifact(tmp_path / ".take_root" / "code" / "peter_r1.md", "converged")
+    transition(
+        tmp_path,
+        {
+            "current_phase": "code",
+            "phases": {
+                "code": {
+                    "status": "done",
+                    "result": "exhausted_stop",
+                    "advance_allowed": False,
+                    "next_action": "take-root code --max-rounds 2",
+                    "last_max_rounds": 1,
+                }
+            },
+        },
+    )
+
+    result = reconcile_state_from_disk(tmp_path)
+    code = result["phases"]["code"]
+
+    assert result["current_phase"] == "test"
+    assert code["status"] == "done"
+    assert code["result"] == "converged"
+    assert code["advance_allowed"] is True
 
 
 def test_run_reset_preserves_config_and_context_by_default(tmp_path: Path) -> None:

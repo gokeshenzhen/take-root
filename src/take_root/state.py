@@ -56,6 +56,10 @@ def _default_code_phase() -> dict[str, Any]:
         "vcs_initial_sha": None,
         "rounds": [],
         "converged": False,
+        "result": "not_started",
+        "advance_allowed": False,
+        "next_action": None,
+        "last_max_rounds": None,
     }
 
 
@@ -176,6 +180,18 @@ def _collect_numbered(prefix: str, directory: Path) -> list[tuple[int, Path]]:
     return entries
 
 
+def _code_next_action(result: str, last_max_rounds: int | None) -> str | None:
+    if result in {"converged", "exhausted_advance"}:
+        return "take-root test"
+    if result == "exhausted_stop":
+        if isinstance(last_max_rounds, int):
+            return f"take-root code --max-rounds {last_max_rounds + 1}"
+        return "take-root code"
+    if result == "in_progress":
+        return "take-root code"
+    return None
+
+
 def reconcile_state_from_disk(project_root: Path) -> dict[str, Any]:
     state = load_or_create_state(project_root)
     plan_dir = take_root_dir(project_root) / "plan"
@@ -191,6 +207,9 @@ def reconcile_state_from_disk(project_root: Path) -> dict[str, Any]:
     if isinstance(existing_code, dict):
         code["vcs_mode"] = existing_code.get("vcs_mode")
         code["vcs_initial_sha"] = existing_code.get("vcs_initial_sha")
+        last_max_rounds = existing_code.get("last_max_rounds")
+        if isinstance(last_max_rounds, int):
+            code["last_max_rounds"] = last_max_rounds
     if isinstance(existing_test, dict):
         max_iterations = existing_test.get("max_iterations")
         if isinstance(max_iterations, int):
@@ -255,6 +274,8 @@ def reconcile_state_from_disk(project_root: Path) -> dict[str, Any]:
         item["peter_status"] = parsed.get("status", "ongoing")
     if ruby_rounds:
         code["status"] = "in_progress"
+        code["result"] = "in_progress"
+        code["next_action"] = _code_next_action("in_progress", code["last_max_rounds"])
         code["rounds"] = [ruby_rounds[key] for key in sorted(ruby_rounds)]
         if all(
             item.get("ruby_status") == "converged" and item.get("peter_status") == "converged"
@@ -262,7 +283,26 @@ def reconcile_state_from_disk(project_root: Path) -> dict[str, Any]:
         ):
             code["status"] = "done"
             code["converged"] = True
+            code["result"] = "converged"
+            code["advance_allowed"] = True
+            code["next_action"] = _code_next_action("converged", code["last_max_rounds"])
             state["current_phase"] = "test"
+        elif isinstance(existing_code, dict):
+            existing_result = existing_code.get("result")
+            last_max_rounds = code.get("last_max_rounds")
+            if (
+                existing_result in {"exhausted_stop", "exhausted_advance"}
+                and isinstance(last_max_rounds, int)
+                and len(code["rounds"]) == last_max_rounds
+            ):
+                code["status"] = "done"
+                code["result"] = existing_result
+                code["advance_allowed"] = existing_result == "exhausted_advance"
+                code["next_action"] = _code_next_action(existing_result, last_max_rounds)
+                if code["advance_allowed"]:
+                    state["current_phase"] = "test"
+                else:
+                    state["current_phase"] = "code"
 
     iterations_map: dict[int, dict[str, Any]] = {}
     for n, path in _collect_numbered("amy_r", test_dir):

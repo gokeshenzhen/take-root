@@ -12,6 +12,7 @@ from take_root.runtimes.base import BaseRuntime
 from take_root.runtimes.claude import ClaudeRuntime
 from take_root.runtimes.codex import CodexRuntime
 from take_root.state import reconcile_state_from_disk, transition
+from take_root.summary import write_run_summary
 from take_root.ui import ask, info
 
 
@@ -62,8 +63,17 @@ def run_test(
 
     config = require_config(project_root)
     state = reconcile_state_from_disk(project_root)
-    if state["phases"]["code"]["status"] != "done":
+    code_state = state["phases"]["code"]
+    if code_state["status"] != "done":
         raise ConfigError("请先完成 code 阶段")
+    if not bool(code_state.get("advance_allowed")):
+        next_action = code_state.get("next_action")
+        if code_state.get("result") == "exhausted_stop":
+            message = "code 阶段已结束，但当前结果未允许交接到 test"
+            if isinstance(next_action, str) and next_action:
+                message += f"；建议先执行: {next_action}"
+            raise ConfigError(message)
+        raise ConfigError("请先完成 code 阶段后再进入 test")
 
     harness_root = find_harness_root()
     amy = load_persona("amy", project_root, harness_root=harness_root)
@@ -136,7 +146,7 @@ def run_test(
         }
         if amy_meta["status"] == "all_pass":
             iterations.append(item)
-            return transition(
+            state = transition(
                 project_root,
                 {
                     "current_phase": "done",
@@ -150,6 +160,8 @@ def run_test(
                     },
                 },
             )
+            write_run_summary(project_root, state)
+            return state
 
         if not ruby_fix_path.exists():
             info(f"[test i{iteration}] Ruby 修复中...")
@@ -212,4 +224,5 @@ def run_test(
         choice = ask("测试迭代达到上限，是否以错误退出？输入 yes / no", default="yes").lower()
         if choice in {"yes", "y", ""}:
             raise ArtifactError("测试迭代达到上限，用户选择退出")
+    write_run_summary(project_root, state)
     return state

@@ -18,6 +18,10 @@ def artifact_path(project_root: Path, phase: str, filename: str) -> Path:
     return phase_dir(project_root, phase) / filename
 
 
+def run_summary_path(project_root: Path) -> Path:
+    return take_root_dir(project_root) / "run_summary.md"
+
+
 def list_artifact_files(project_root: Path, phase: str | None = None) -> list[Path]:
     root = take_root_dir(project_root)
     if phase is not None:
