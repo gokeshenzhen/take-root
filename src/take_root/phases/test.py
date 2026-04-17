@@ -51,6 +51,18 @@ def _find_last_ruby_impl(project_root: Path) -> Path:
     return rounds[-1]
 
 
+def _print_test_result_summary(iteration: int, amy_meta: dict[str, Any]) -> None:
+    counts = amy_meta.get("counts")
+    if not isinstance(counts, dict):
+        return
+    info(f"[test i{iteration}] 测试结果:")
+    info(f"  - status: {amy_meta['status']}")
+    info(f"  - counts.passed: {counts.get('passed')}")
+    info(f"  - counts.fail: {counts.get('fail')}")
+    info(f"  - counts.error_test: {counts.get('error_test')}")
+    info(f"  - counts.error_env: {counts.get('error_env')}")
+
+
 def run_test(
     project_root: Path,
     max_iterations: int = 5,
@@ -161,6 +173,7 @@ def run_test(
                 },
             )
             write_run_summary(project_root, state)
+            _print_test_result_summary(iteration, amy_meta)
             return state
 
         if not ruby_fix_path.exists():
