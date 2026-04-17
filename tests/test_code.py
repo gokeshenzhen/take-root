@@ -101,9 +101,17 @@ def _write_peter_artifact(path: Path, *, round_num: int, status: str) -> None:
 
 
 class _FakeRuntime:
-    def __init__(self, persona_name: str, calls: list[Path]) -> None:
+    def __init__(
+        self,
+        persona_name: str,
+        calls: list[Path],
+        *,
+        skip_first_peter_write: bool = False,
+    ) -> None:
         self.persona_name = persona_name
         self.calls = calls
+        self.skip_first_peter_write = skip_first_peter_write
+        self.peter_attempts = 0
 
     def call_noninteractive(
         self,
@@ -123,6 +131,9 @@ class _FakeRuntime:
             _write_ruby_artifact(output_path, round_num=round_num, status="converged")
         else:
             round_num = int(output_path.stem.rsplit("r", 1)[1])
+            self.peter_attempts += 1
+            if self.skip_first_peter_write and self.peter_attempts == 1:
+                return RuntimeCallResult(0, "", "", 0.1)
             _write_peter_artifact(output_path, round_num=round_num, status="converged")
         return RuntimeCallResult(0, "", "", 0.1)
 
@@ -165,3 +176,48 @@ def test_run_code_resumes_partial_round_with_peter_review_first(
     assert calls[0] == tmp_path / ".take_root" / "code" / "peter_r1.md"
     assert state["phases"]["code"]["status"] == "done"
     assert state["phases"]["code"]["rounds"][0]["peter_path"] == ".take_root/code/peter_r1.md"
+
+
+def test_run_code_retries_missing_peter_artifact_once(monkeypatch, tmp_path: Path) -> None:
+    save_config(tmp_path, default_take_root_config())
+    load_or_create_state(tmp_path)
+    _write_final_plan(tmp_path / ".take_root" / "plan" / "final_plan.md")
+    _write_ruby_artifact(tmp_path / ".take_root" / "code" / "ruby_r1.md", round_num=1, status="converged")
+    transition(
+        tmp_path,
+        {
+            "current_phase": "code",
+            "phases": {
+                "init": {
+                    "done": True,
+                    "claude_md_generated": True,
+                    "claude_md_last_refresh": "2026-04-17T00:00:00Z",
+                    "agents_md_symlinked": True,
+                },
+                "plan": {
+                    "status": "done",
+                    "final_plan_path": ".take_root/plan/final_plan.md",
+                    "converged": True,
+                },
+            },
+        },
+    )
+    calls: list[Path] = []
+    monkeypatch.setattr("take_root.phases.code._check_runtime_available", lambda _: None)
+    monkeypatch.setattr(
+        "take_root.phases.code._runtime_for",
+        lambda persona, project_root, config: _FakeRuntime(
+            persona.name,
+            calls,
+            skip_first_peter_write=(persona.name == "peter"),
+        ),
+    )
+
+    state = run_code(tmp_path, vcs_mode="off", max_rounds=2)
+
+    assert calls == [
+        tmp_path / ".take_root" / "code" / "peter_r1.md",
+        tmp_path / ".take_root" / "code" / "peter_r1.md",
+    ]
+    assert state["phases"]["code"]["status"] == "done"
+    assert (tmp_path / ".take_root" / "code" / "peter_r1.md").exists()
