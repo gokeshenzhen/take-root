@@ -229,6 +229,23 @@ def test_reconcile_code_handoff_recomputes_converged_from_artifacts(tmp_path: Pa
     assert code["advance_allowed"] is True
 
 
+def test_reconcile_code_handoff_uses_latest_round_for_convergence(tmp_path: Path) -> None:
+    load_or_create_state(tmp_path)
+    _write_final_plan(tmp_path / ".take_root" / "plan" / "final_plan.md")
+    _write_artifact(tmp_path / ".take_root" / "code" / "ruby_r1.md", "ongoing")
+    _write_artifact(tmp_path / ".take_root" / "code" / "peter_r1.md", "converged")
+    _write_artifact(tmp_path / ".take_root" / "code" / "ruby_r2.md", "converged")
+    _write_artifact(tmp_path / ".take_root" / "code" / "peter_r2.md", "converged")
+
+    result = reconcile_state_from_disk(tmp_path)
+    code = result["phases"]["code"]
+
+    assert result["current_phase"] == "test"
+    assert code["status"] == "done"
+    assert code["result"] == "converged"
+    assert code["advance_allowed"] is True
+
+
 def test_run_reset_preserves_config_and_context_by_default(tmp_path: Path) -> None:
     save_config(tmp_path, default_take_root_config())
     load_or_create_state(tmp_path)

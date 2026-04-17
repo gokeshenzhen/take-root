@@ -277,9 +277,10 @@ def reconcile_state_from_disk(project_root: Path) -> dict[str, Any]:
         code["result"] = "in_progress"
         code["next_action"] = _code_next_action("in_progress", code["last_max_rounds"])
         code["rounds"] = [ruby_rounds[key] for key in sorted(ruby_rounds)]
-        if all(
-            item.get("ruby_status") == "converged" and item.get("peter_status") == "converged"
-            for item in code["rounds"]
+        latest_round = code["rounds"][-1]
+        if (
+            latest_round.get("ruby_status") == "converged"
+            and latest_round.get("peter_status") == "converged"
         ):
             code["status"] = "done"
             code["converged"] = True
