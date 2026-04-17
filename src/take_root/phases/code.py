@@ -93,6 +93,21 @@ def _resolved_vcs_metadata(
     return {"commit_sha": commit_sha, "snapshot_dir": snapshot_dir}
 
 
+def _resume_code_rounds(
+    rounds: list[dict[str, Any]],
+) -> tuple[int, list[dict[str, Any]]]:
+    completed_rounds: list[dict[str, Any]] = []
+    for index, item in enumerate(rounds, start=1):
+        if int(item.get("n", index)) != index:
+            return index, completed_rounds
+        if "ruby_path" not in item:
+            return index, completed_rounds
+        if "peter_path" not in item:
+            return index, completed_rounds
+        completed_rounds.append(item)
+    return len(rounds) + 1, completed_rounds
+
+
 def _next_action_for_result(result: str, max_rounds: int) -> str | None:
     if result in {"converged", "exhausted_advance"}:
         return "take-root test"
@@ -145,8 +160,8 @@ def run_code(
     elif vcs_handler.__class__.__name__ == "SnapshotVCS":
         mode_name = "snapshot"
 
-    rounds = existing_rounds
-    for round_num in range(len(rounds) + 1, max_rounds + 1):
+    start_round, rounds = _resume_code_rounds(existing_rounds)
+    for round_num in range(start_round, max_rounds + 1):
         ruby_path = artifact_path(project_root, "code", f"ruby_r{round_num}.md")
         peter_path = artifact_path(project_root, "code", f"peter_r{round_num}.md")
         prior_ruby = [
