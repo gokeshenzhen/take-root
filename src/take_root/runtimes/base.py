@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 import time
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,6 +15,8 @@ from take_root.persona import Persona
 
 if TYPE_CHECKING:
     from take_root.config import ResolvedRuntimeConfig
+
+LOGGER = logging.getLogger(__name__)
 
 TRANSIENT_PATTERNS = (
     re.compile(r"rate[ -]?limit", re.IGNORECASE),
@@ -119,6 +122,38 @@ class BaseRuntime(ABC):
     def _is_transient_error(self, stderr: str) -> bool:
         return any(pattern.search(stderr) for pattern in TRANSIENT_PATTERNS)
 
+    def _log_runtime_start(
+        self,
+        cmd: list[str],
+        cwd: Path,
+        timeout_sec: int,
+        env: dict[str, str] | None,
+    ) -> None:
+        LOGGER.debug(
+            "runtime start: persona=%s runtime=%s cwd=%s timeout=%ss cmd=%s env_keys=%s",
+            self.persona.name,
+            self.__class__.__name__,
+            cwd,
+            timeout_sec,
+            _summarize_cmd(cmd),
+            sorted(env.keys()) if env is not None else [],
+        )
+
+    def _log_runtime_result(self, result: RuntimeCallResult) -> None:
+        LOGGER.debug(
+            "runtime result: persona=%s runtime=%s exit_code=%s duration=%.3fs stdout=%dB stderr=%dB",
+            self.persona.name,
+            self.__class__.__name__,
+            result.exit_code,
+            result.duration_sec,
+            len(result.stdout),
+            len(result.stderr),
+        )
+        if result.stdout:
+            LOGGER.debug("runtime stdout preview: %s", _preview_text(result.stdout))
+        if result.stderr:
+            LOGGER.debug("runtime stderr preview: %s", _preview_text(result.stderr))
+
     def _run_noninteractive_with_policy(
         self,
         cmd: list[str],
@@ -129,6 +164,7 @@ class BaseRuntime(ABC):
         attempt = 0
         while True:
             started = time.monotonic()
+            self._log_runtime_start(cmd, cwd, timeout_sec, env)
             try:
                 completed = subprocess.run(
                     cmd,
@@ -140,6 +176,20 @@ class BaseRuntime(ABC):
                     env=env,
                 )
             except subprocess.TimeoutExpired as exc:
+                partial_stdout = (
+                    exc.stdout if isinstance(exc.stdout, str) else (exc.stdout.decode() if exc.stdout else "")
+                )
+                partial_stderr = (
+                    exc.stderr if isinstance(exc.stderr, str) else (exc.stderr.decode() if exc.stderr else "")
+                )
+                LOGGER.debug(
+                    "runtime timeout: persona=%s runtime=%s timeout=%ss partial_stdout=%s partial_stderr=%s",
+                    self.persona.name,
+                    self.__class__.__name__,
+                    timeout_sec,
+                    _preview_text(partial_stdout),
+                    _preview_text(partial_stderr),
+                )
                 raise RuntimeCallError(f"timeout after {timeout_sec}s") from exc
             duration = time.monotonic() - started
             result = RuntimeCallResult(
@@ -148,6 +198,7 @@ class BaseRuntime(ABC):
                 stderr=completed.stderr,
                 duration_sec=duration,
             )
+            self._log_runtime_result(result)
             if result.exit_code == 0:
                 return result
             if attempt >= self.config.retries or not self._is_transient_error(result.stderr):
@@ -181,3 +232,17 @@ class BaseRuntime(ABC):
             env.pop(key, None)
         env.update(self.resolved_config.env)
         return env
+
+
+def _preview_text(text: str, limit: int = 400) -> str:
+    normalized = text.replace("\n", "\\n")
+    if len(normalized) <= limit:
+        return normalized
+    return f"{normalized[:limit]}...(+{len(normalized) - limit} chars)"
+
+
+def _summarize_cmd(cmd: list[str], max_items: int = 10) -> str:
+    items = [_preview_text(item, limit=120) for item in cmd[:max_items]]
+    if len(cmd) > max_items:
+        items.append(f"...(+{len(cmd) - max_items} args)")
+    return "[" + ", ".join(items) + "]"

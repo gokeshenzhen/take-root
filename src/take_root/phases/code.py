@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any, Literal
 
@@ -17,6 +18,7 @@ from take_root.ui import info
 from take_root.vcs import VCSHandler, select_vcs_mode
 
 DEFAULT_CODE_ROUNDS = 5
+LOGGER = logging.getLogger(__name__)
 
 
 def _runtime_for(
@@ -241,6 +243,15 @@ def run_code(
                     else None
                 ),
             )
+            LOGGER.debug(
+                "ruby call: round=%d output_path=%s latest_peter=%s prior_ruby=%d prior_peter=%d vcs_mode=%s",
+                round_num,
+                ruby_path,
+                latest_peter,
+                len(prior_ruby),
+                len(prior_peter),
+                mode_name,
+            )
             ruby_runtime.call_noninteractive(ruby_boot, cwd=project_root, timeout_sec=1800)
         ruby_meta = validate_artifact(
             ruby_path,
@@ -296,6 +307,16 @@ def run_code(
                     "curr_sha": review_range.get("curr_sha"),
                 }
             peter_boot = format_boot_message("peter", **peter_boot_kwargs)
+            LOGGER.debug(
+                "peter call: round=%d output_path=%s latest_ruby=%s prior_ruby=%d prior_peter=%d vcs_mode=%s review_range=%s",
+                round_num,
+                peter_path,
+                ruby_path,
+                len(prior_ruby) + 1,
+                len(prior_peter),
+                mode_name,
+                review_range,
+            )
             peter_meta = _call_noninteractive_with_artifact_retry(
                 runtime=peter_runtime,
                 boot_message=peter_boot,

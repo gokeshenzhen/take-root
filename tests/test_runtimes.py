@@ -97,6 +97,25 @@ def test_base_runtime_timeout_raises(monkeypatch: pytest.MonkeyPatch, tmp_path: 
         runtime.call_noninteractive("hi", tmp_path, timeout_sec=1)
 
 
+def test_base_runtime_logs_failed_stdout_and_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def _fake_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        del args, kwargs
+        return subprocess.CompletedProcess(["dummy"], 1, "partial out", "partial err")
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+    runtime = _DummyRuntime(_persona("codex"), tmp_path, config=RuntimeConfig(retries=0))
+    with caplog.at_level("DEBUG"):
+        with pytest.raises(RuntimeCallError):
+            runtime.call_noninteractive("hi", tmp_path, timeout_sec=1)
+
+    assert "runtime stdout preview: partial out" in caplog.text
+    assert "runtime stderr preview: partial err" in caplog.text
+
+
 def test_claude_runtime_builds_expected_command(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
