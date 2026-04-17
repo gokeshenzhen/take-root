@@ -108,6 +108,47 @@ def _resume_code_rounds(
     return len(rounds) + 1, completed_rounds
 
 
+def _artifact_retry_prompt(
+    *,
+    boot_message: str,
+    output_path: Path,
+    validation_error: Exception,
+) -> str:
+    return (
+        f"{boot_message}\n\n"
+        "[take-root harness correction]\n"
+        f"Your previous output for output_path={output_path} failed validation: {validation_error}\n"
+        "Rewrite the artifact from scratch and write it to output_path.\n"
+        "Do not modify project source files. Do not output explanations outside the artifact."
+    )
+
+
+def _call_noninteractive_with_artifact_retry(
+    *,
+    runtime: BaseRuntime,
+    boot_message: str,
+    cwd: Path,
+    timeout_sec: int,
+    output_path: Path,
+    required_keys: list[str],
+    max_attempts: int = 2,
+) -> dict[str, Any]:
+    current_boot = boot_message
+    for attempt in range(1, max_attempts + 1):
+        runtime.call_noninteractive(current_boot, cwd=cwd, timeout_sec=timeout_sec)
+        try:
+            return validate_artifact(output_path, required_keys)
+        except Exception as exc:
+            if attempt >= max_attempts:
+                raise
+            current_boot = _artifact_retry_prompt(
+                boot_message=boot_message,
+                output_path=output_path,
+                validation_error=exc,
+            )
+    raise AssertionError("unreachable")
+
+
 def _next_action_for_result(result: str, max_rounds: int) -> str | None:
     if result in {"converged", "exhausted_advance"}:
         return "take-root test"
@@ -255,20 +296,37 @@ def run_code(
                     "curr_sha": review_range.get("curr_sha"),
                 }
             peter_boot = format_boot_message("peter", **peter_boot_kwargs)
-            peter_runtime.call_noninteractive(peter_boot, cwd=project_root, timeout_sec=1800)
-        peter_meta = validate_artifact(
-            peter_path,
-            [
-                "artifact",
-                "round",
-                "status",
-                "addresses",
-                "reviewed_commit",
-                "files_reviewed",
-                "open_findings",
-                "created_at",
-            ],
-        )
+            peter_meta = _call_noninteractive_with_artifact_retry(
+                runtime=peter_runtime,
+                boot_message=peter_boot,
+                cwd=project_root,
+                timeout_sec=1800,
+                output_path=peter_path,
+                required_keys=[
+                    "artifact",
+                    "round",
+                    "status",
+                    "addresses",
+                    "reviewed_commit",
+                    "files_reviewed",
+                    "open_findings",
+                    "created_at",
+                ],
+            )
+        else:
+            peter_meta = validate_artifact(
+                peter_path,
+                [
+                    "artifact",
+                    "round",
+                    "status",
+                    "addresses",
+                    "reviewed_commit",
+                    "files_reviewed",
+                    "open_findings",
+                    "created_at",
+                ],
+            )
         current_round["peter_path"] = _relative(peter_path, project_root)
         current_round["peter_status"] = peter_meta["status"]
         rounds.append(current_round)
