@@ -146,7 +146,11 @@ def test_run_code_resumes_partial_round_with_peter_review_first(
     save_config(tmp_path, default_take_root_config())
     load_or_create_state(tmp_path)
     _write_final_plan(tmp_path / ".take_root" / "plan" / "final_plan.md")
-    _write_ruby_artifact(tmp_path / ".take_root" / "code" / "ruby_r1.md", round_num=1, status="converged")
+    _write_ruby_artifact(
+        tmp_path / ".take_root" / "code" / "ruby_r1.md",
+        round_num=1,
+        status="converged",
+    )
     transition(
         tmp_path,
         {
@@ -194,7 +198,11 @@ def test_run_code_retries_missing_peter_artifact_once(monkeypatch, tmp_path: Pat
     save_config(tmp_path, default_take_root_config())
     load_or_create_state(tmp_path)
     _write_final_plan(tmp_path / ".take_root" / "plan" / "final_plan.md")
-    _write_ruby_artifact(tmp_path / ".take_root" / "code" / "ruby_r1.md", round_num=1, status="converged")
+    _write_ruby_artifact(
+        tmp_path / ".take_root" / "code" / "ruby_r1.md",
+        round_num=1,
+        status="converged",
+    )
     transition(
         tmp_path,
         {
@@ -238,4 +246,7 @@ def test_run_code_retries_missing_peter_artifact_once(monkeypatch, tmp_path: Pat
     ]
     assert state["phases"]["code"]["status"] == "done"
     assert (tmp_path / ".take_root" / "code" / "peter_r1.md").exists()
-    assert all(policy is not None and policy.mode == "review_only" for policy in runtimes["peter"].policies)
+    assert all(
+        policy is not None and policy.mode == "review_only"
+        for policy in runtimes["peter"].policies
+    )

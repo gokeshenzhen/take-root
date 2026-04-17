@@ -119,7 +119,8 @@ def _artifact_retry_prompt(
     return (
         f"{boot_message}\n\n"
         "[take-root harness correction]\n"
-        f"Your previous output for output_path={output_path} failed validation: {validation_error}\n"
+        "Your previous output for "
+        f"output_path={output_path} failed validation: {validation_error}\n"
         "Rewrite the artifact from scratch and write it to output_path.\n"
         "Do not modify project source files. Do not output explanations outside the artifact."
     )
@@ -249,7 +250,8 @@ def run_code(
                 ),
             )
             LOGGER.debug(
-                "ruby call: round=%d output_path=%s latest_peter=%s prior_ruby=%d prior_peter=%d vcs_mode=%s",
+                "ruby call: round=%d output_path=%s latest_peter=%s "
+                "prior_ruby=%d prior_peter=%d vcs_mode=%s",
                 round_num,
                 ruby_path,
                 latest_peter,
@@ -313,7 +315,8 @@ def run_code(
                 }
             peter_boot = format_boot_message("peter", **peter_boot_kwargs)
             LOGGER.debug(
-                "peter call: round=%d output_path=%s latest_ruby=%s prior_ruby=%d prior_peter=%d vcs_mode=%s review_range=%s",
+                "peter call: round=%d output_path=%s latest_ruby=%s "
+                "prior_ruby=%d prior_peter=%d vcs_mode=%s review_range=%s",
                 round_num,
                 peter_path,
                 ruby_path,

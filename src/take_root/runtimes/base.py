@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import logging
 import os
 import re
 import subprocess
 import time
-import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -141,7 +141,8 @@ class BaseRuntime(ABC):
 
     def _log_runtime_result(self, result: RuntimeCallResult) -> None:
         LOGGER.debug(
-            "runtime result: persona=%s runtime=%s exit_code=%s duration=%.3fs stdout=%dB stderr=%dB",
+            "runtime result: persona=%s runtime=%s exit_code=%s "
+            "duration=%.3fs stdout=%dB stderr=%dB",
             self.persona.name,
             self.__class__.__name__,
             result.exit_code,
@@ -177,13 +178,18 @@ class BaseRuntime(ABC):
                 )
             except subprocess.TimeoutExpired as exc:
                 partial_stdout = (
-                    exc.stdout if isinstance(exc.stdout, str) else (exc.stdout.decode() if exc.stdout else "")
+                    exc.stdout
+                    if isinstance(exc.stdout, str)
+                    else (exc.stdout.decode() if exc.stdout else "")
                 )
                 partial_stderr = (
-                    exc.stderr if isinstance(exc.stderr, str) else (exc.stderr.decode() if exc.stderr else "")
+                    exc.stderr
+                    if isinstance(exc.stderr, str)
+                    else (exc.stderr.decode() if exc.stderr else "")
                 )
                 LOGGER.debug(
-                    "runtime timeout: persona=%s runtime=%s timeout=%ss partial_stdout=%s partial_stderr=%s",
+                    "runtime timeout: persona=%s runtime=%s timeout=%ss "
+                    "partial_stdout=%s partial_stderr=%s",
                     self.persona.name,
                     self.__class__.__name__,
                     timeout_sec,
