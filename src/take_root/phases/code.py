@@ -9,7 +9,7 @@ from take_root.config import TakeRootConfig, require_config, resolve_persona_run
 from take_root.errors import ConfigError
 from take_root.persona import Persona, find_harness_root, load_persona
 from take_root.phases import format_boot_message, validate_artifact
-from take_root.runtimes.base import BaseRuntime
+from take_root.runtimes.base import BaseRuntime, RuntimePolicy
 from take_root.runtimes.claude import ClaudeRuntime
 from take_root.runtimes.codex import CodexRuntime
 from take_root.state import reconcile_state_from_disk, transition
@@ -137,7 +137,12 @@ def _call_noninteractive_with_artifact_retry(
 ) -> dict[str, Any]:
     current_boot = boot_message
     for attempt in range(1, max_attempts + 1):
-        runtime.call_noninteractive(current_boot, cwd=cwd, timeout_sec=timeout_sec)
+        runtime.call_noninteractive(
+            current_boot,
+            cwd=cwd,
+            timeout_sec=timeout_sec,
+            policy=RuntimePolicy.review_only(output_path),
+        )
         try:
             return validate_artifact(output_path, required_keys)
         except Exception as exc:

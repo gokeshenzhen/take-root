@@ -112,6 +112,7 @@ class _FakeRuntime:
         self.calls = calls
         self.skip_first_peter_write = skip_first_peter_write
         self.peter_attempts = 0
+        self.policies: list[Any | None] = []
 
     def call_noninteractive(
         self,
@@ -120,12 +121,13 @@ class _FakeRuntime:
         timeout_sec: int = 1800,
         policy: Any | None = None,
     ) -> RuntimeCallResult:
-        del timeout_sec, policy
+        del timeout_sec
         output_line = next(
             line for line in boot_message.splitlines() if line.startswith("output_path: ")
         )
         output_path = Path(output_line.split(": ", 1)[1])
         self.calls.append(output_path)
+        self.policies.append(policy)
         if self.persona_name == "ruby":
             round_num = int(output_path.stem.rsplit("r", 1)[1])
             _write_ruby_artifact(output_path, round_num=round_num, status="converged")
@@ -166,16 +168,26 @@ def test_run_code_resumes_partial_round_with_peter_review_first(
     )
     calls: list[Path] = []
     monkeypatch.setattr("take_root.phases.code._check_runtime_available", lambda _: None)
-    monkeypatch.setattr(
-        "take_root.phases.code._runtime_for",
-        lambda persona, project_root, config: _FakeRuntime(persona.name, calls),
-    )
+    runtimes: dict[str, _FakeRuntime] = {}
+
+    def _fake_runtime_for(persona, project_root, config):
+        del project_root, config
+        runtime = _FakeRuntime(persona.name, calls)
+        runtimes[persona.name] = runtime
+        return runtime
+
+    monkeypatch.setattr("take_root.phases.code._runtime_for", _fake_runtime_for)
 
     state = run_code(tmp_path, vcs_mode="off", max_rounds=2)
 
     assert calls[0] == tmp_path / ".take_root" / "code" / "peter_r1.md"
     assert state["phases"]["code"]["status"] == "done"
     assert state["phases"]["code"]["rounds"][0]["peter_path"] == ".take_root/code/peter_r1.md"
+    assert runtimes["peter"].policies[0] is not None
+    assert runtimes["peter"].policies[0].mode == "review_only"
+    assert runtimes["peter"].policies[0].output_path == (
+        tmp_path / ".take_root" / "code" / "peter_r1.md"
+    ).resolve()
 
 
 def test_run_code_retries_missing_peter_artifact_once(monkeypatch, tmp_path: Path) -> None:
@@ -204,14 +216,19 @@ def test_run_code_retries_missing_peter_artifact_once(monkeypatch, tmp_path: Pat
     )
     calls: list[Path] = []
     monkeypatch.setattr("take_root.phases.code._check_runtime_available", lambda _: None)
-    monkeypatch.setattr(
-        "take_root.phases.code._runtime_for",
-        lambda persona, project_root, config: _FakeRuntime(
+    runtimes: dict[str, _FakeRuntime] = {}
+
+    def _fake_runtime_for(persona, project_root, config):
+        del project_root, config
+        runtime = _FakeRuntime(
             persona.name,
             calls,
             skip_first_peter_write=(persona.name == "peter"),
-        ),
-    )
+        )
+        runtimes[persona.name] = runtime
+        return runtime
+
+    monkeypatch.setattr("take_root.phases.code._runtime_for", _fake_runtime_for)
 
     state = run_code(tmp_path, vcs_mode="off", max_rounds=2)
 
@@ -221,3 +238,4 @@ def test_run_code_retries_missing_peter_artifact_once(monkeypatch, tmp_path: Pat
     ]
     assert state["phases"]["code"]["status"] == "done"
     assert (tmp_path / ".take_root" / "code" / "peter_r1.md").exists()
+    assert all(policy is not None and policy.mode == "review_only" for policy in runtimes["peter"].policies)
