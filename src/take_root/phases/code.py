@@ -73,6 +73,26 @@ def _review_range(
     return {"prev_sha": None, "curr_sha": None, "snapshot_dirs": None}
 
 
+def _resolved_vcs_metadata(
+    ruby_meta: dict[str, Any], vcs_result: dict[str, str | None]
+) -> dict[str, str | None]:
+    commit_sha = vcs_result.get("commit_sha")
+    snapshot_dir = vcs_result.get("snapshot_dir")
+    if commit_sha is None:
+        raw_commit_sha = ruby_meta.get("commit_sha")
+        if isinstance(raw_commit_sha, str) and raw_commit_sha.strip() and raw_commit_sha != "null":
+            commit_sha = raw_commit_sha
+    if snapshot_dir is None:
+        raw_snapshot_dir = ruby_meta.get("snapshot_dir")
+        if (
+            isinstance(raw_snapshot_dir, str)
+            and raw_snapshot_dir.strip()
+            and raw_snapshot_dir != "null"
+        ):
+            snapshot_dir = raw_snapshot_dir
+    return {"commit_sha": commit_sha, "snapshot_dir": snapshot_dir}
+
+
 def _next_action_for_result(result: str, max_rounds: int) -> str | None:
     if result in {"converged", "exhausted_advance"}:
         return "take-root test"
@@ -188,12 +208,13 @@ def run_code(
             summary=f"ruby round {round_num}",
             prefix=f"[take-root code r{round_num}]",
         )
+        vcs_metadata = _resolved_vcs_metadata(ruby_meta, vcs_result)
         current_round: dict[str, Any] = {
             "n": round_num,
             "ruby_path": _relative(ruby_path, project_root),
             "ruby_status": ruby_meta["status"],
-            "commit_sha": vcs_result.get("commit_sha"),
-            "snapshot_dir": vcs_result.get("snapshot_dir"),
+            "commit_sha": vcs_metadata["commit_sha"],
+            "snapshot_dir": vcs_metadata["snapshot_dir"],
         }
 
         if not peter_path.exists():

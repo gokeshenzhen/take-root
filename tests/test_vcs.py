@@ -37,6 +37,37 @@ def test_git_vcs_commit_and_dirty_detection(tmp_path: Path) -> None:
     assert handler.detect_dirty() is False
 
 
+def test_git_vcs_ignores_untracked_files_for_dirty_detection(tmp_path: Path) -> None:
+    _init_git_repo(tmp_path)
+    handler = GitVCS(tmp_path)
+    (tmp_path / "notes").mkdir()
+    (tmp_path / "notes" / "draft.txt").write_text("scratch\n", encoding="utf-8")
+
+    assert handler.detect_dirty() is False
+
+
+def test_git_vcs_post_round_ignores_untracked_files_when_nothing_is_staged(tmp_path: Path) -> None:
+    _init_git_repo(tmp_path)
+    handler = GitVCS(tmp_path)
+    head_before = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=tmp_path, check=True, text=True, capture_output=True
+    ).stdout.strip()
+    (tmp_path / "notes.txt").write_text("scratch\n", encoding="utf-8")
+
+    result = handler.post_round(
+        round_num=1,
+        files_changed=[],
+        summary="noop",
+        prefix="[take-root code r1]",
+    )
+
+    head_after = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=tmp_path, check=True, text=True, capture_output=True
+    ).stdout.strip()
+    assert result["commit_sha"] is None
+    assert head_after == head_before
+
+
 def test_snapshot_vcs_copies_changed_files(tmp_path: Path) -> None:
     (tmp_path / "src").mkdir()
     changed = tmp_path / "src" / "a.py"

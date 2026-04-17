@@ -49,6 +49,21 @@ class GitVCS(VCSHandler):
     def __init__(self, project_root: Path) -> None:
         self.project_root = project_root
 
+    def _has_tracked_changes(self) -> bool:
+        return _git_diff_exists(
+            ["git", "diff", "--quiet", "--ignore-submodules", "--"],
+            cwd=self.project_root,
+        ) or _git_diff_exists(
+            ["git", "diff", "--cached", "--quiet", "--ignore-submodules", "--"],
+            cwd=self.project_root,
+        )
+
+    def _has_staged_changes(self) -> bool:
+        return _git_diff_exists(
+            ["git", "diff", "--cached", "--quiet", "--ignore-submodules", "--"],
+            cwd=self.project_root,
+        )
+
     def pre_round(self, round_num: int) -> None:
         LOGGER.debug("GitVCS pre_round %d", round_num)
 
@@ -67,8 +82,7 @@ class GitVCS(VCSHandler):
                 existing.append(str(abs_path.relative_to(self.project_root)))
         if existing:
             _run(["git", "add", *existing], cwd=self.project_root)
-        status = _run(["git", "status", "--porcelain"], cwd=self.project_root)
-        if not status.stdout.strip():
+        if not self._has_staged_changes():
             return {"commit_sha": None, "snapshot_dir": None}
         message = f"{prefix} {summary}".strip()
         _run(["git", "commit", "-m", message], cwd=self.project_root)
@@ -76,8 +90,7 @@ class GitVCS(VCSHandler):
         return {"commit_sha": head.stdout.strip(), "snapshot_dir": None}
 
     def detect_dirty(self) -> bool:
-        result = _run(["git", "status", "--porcelain"], cwd=self.project_root)
-        return bool(result.stdout.strip())
+        return self._has_tracked_changes()
 
 
 class SnapshotVCS(VCSHandler):
@@ -205,3 +218,12 @@ def select_vcs_mode(
     if answer in {"3", "off"}:
         return OffVCS()
     raise UserAbort("用户取消：未选择可用的 VCS 方案")
+
+
+def _git_diff_exists(cmd: list[str], cwd: Path) -> bool:
+    result = _run(cmd, cwd=cwd, check=False)
+    if result.returncode == 0:
+        return False
+    if result.returncode == 1:
+        return True
+    raise VCSError(f"Command failed ({' '.join(cmd)}): {result.stderr.strip()}")
