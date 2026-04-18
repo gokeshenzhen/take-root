@@ -351,6 +351,28 @@ def test_run_plan_ignores_doctor_artifacts_during_review_only(
     assert not report_dir.exists()
 
 
+def test_run_plan_prints_rich_phase_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _prepare_plan_project(monkeypatch, tmp_path)
+    calls: list[dict[str, Any]] = []
+    harness = _RuntimeHarness(recorder=calls)
+    monkeypatch.setattr(
+        "take_root.phases.plan._runtime_for",
+        lambda persona, project_root, config: harness.build(persona.name),
+    )
+
+    run_plan(tmp_path, max_rounds=2)
+
+    captured = capsys.readouterr()
+    assert "[plan r1] Robin 评审中" in captured.err
+    assert "robin_r1  status=converged  concerns=0" in captured.err
+    assert "jack_r1  status=converged  attacks=0" in captured.err
+    assert "final_plan  rounds=1  converged=True" in captured.err
+
+
 def test_run_plan_retries_invalid_jack_round_artifact_once(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

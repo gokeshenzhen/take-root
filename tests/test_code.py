@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from take_root.config import default_take_root_config, save_config
 from take_root.phases.code import _resolved_vcs_metadata, run_code
 from take_root.runtimes.base import RuntimeCallResult
@@ -250,3 +252,45 @@ def test_run_code_retries_missing_peter_artifact_once(monkeypatch, tmp_path: Pat
         policy is not None and policy.mode == "review_only"
         for policy in runtimes["peter"].policies
     )
+
+
+def test_run_code_prints_rich_phase_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    save_config(tmp_path, default_take_root_config())
+    load_or_create_state(tmp_path)
+    _write_final_plan(tmp_path / ".take_root" / "plan" / "final_plan.md")
+    transition(
+        tmp_path,
+        {
+            "current_phase": "code",
+            "phases": {
+                "init": {
+                    "done": True,
+                    "claude_md_generated": True,
+                    "claude_md_last_refresh": "2026-04-17T00:00:00Z",
+                    "agents_md_symlinked": True,
+                },
+                "plan": {
+                    "status": "done",
+                    "final_plan_path": ".take_root/plan/final_plan.md",
+                    "converged": True,
+                },
+            },
+        },
+    )
+    calls: list[Path] = []
+    monkeypatch.setattr("take_root.phases.code._check_runtime_available", lambda _: None)
+    monkeypatch.setattr(
+        "take_root.phases.code._runtime_for",
+        lambda persona, project_root, config: _FakeRuntime(persona.name, calls),
+    )
+
+    run_code(tmp_path, vcs_mode="off", max_rounds=2)
+
+    captured = capsys.readouterr()
+    assert "[code r1] Ruby 实现中" in captured.err
+    assert "ruby_r1  status=converged  pushbacks=0  commit=-  files=0" in captured.err
+    assert "peter_r1  (gpt-5.4 · high) ── converged · 0 open" in captured.err

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -31,6 +32,10 @@ def _parse_on_code_exhausted(value: object) -> Literal["stop", "advance"]:
 
 def _setup_logging(verbose: bool, log_file: Path | None) -> None:
     level = logging.DEBUG if verbose else logging.INFO
+    if log_file is None:
+        os.environ.pop("TAKE_ROOT_DISABLE_COLOR", None)
+    else:
+        os.environ["TAKE_ROOT_DISABLE_COLOR"] = "1"
     handlers: list[logging.Handler] = [logging.StreamHandler(sys.stderr)]
     if log_file is not None:
         handlers.append(logging.FileHandler(log_file, encoding="utf-8"))

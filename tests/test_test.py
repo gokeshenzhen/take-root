@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 
 from take_root.config import default_take_root_config, save_config
-from take_root.runtimes.base import RuntimeCallResult
 from take_root.phases.test import run_test
+from take_root.runtimes.base import RuntimeCallResult
 from take_root.state import load_or_create_state
 
 
@@ -109,6 +109,8 @@ def test_run_test_prints_all_pass_summary(
 
     captured = capsys.readouterr()
     assert state["current_phase"] == "done"
+    assert "[test it1] Amy 全量测试中" in captured.err
+    assert "amy_r1  status=all_pass  passed=111  fail=0" in captured.err
     assert "  - status: all_pass" in captured.err
     assert "  - counts.passed: 111" in captured.err
     assert "  - counts.fail: 0" in captured.err

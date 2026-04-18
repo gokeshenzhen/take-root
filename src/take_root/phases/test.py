@@ -7,13 +7,14 @@ from take_root.artifacts import artifact_path
 from take_root.config import TakeRootConfig, require_config, resolve_persona_runtime_config
 from take_root.errors import ArtifactError, ConfigError
 from take_root.persona import Persona, find_harness_root, load_persona
+from take_root.phase_ui import announce_persona_call, build_runtime_tag, render_artifact_summary
 from take_root.phases import format_boot_message, validate_artifact
 from take_root.runtimes.base import BaseRuntime
 from take_root.runtimes.claude import ClaudeRuntime
 from take_root.runtimes.codex import CodexRuntime
 from take_root.state import reconcile_state_from_disk, transition
 from take_root.summary import write_run_summary
-from take_root.ui import ask, info
+from take_root.ui import Spinner, ask, info
 
 
 def _runtime_for(
@@ -55,7 +56,7 @@ def _print_test_result_summary(iteration: int, amy_meta: dict[str, Any]) -> None
     counts = amy_meta.get("counts")
     if not isinstance(counts, dict):
         return
-    info(f"[test i{iteration}] 测试结果:")
+    info(f"[test it{iteration}] 测试结果:")
     info(f"  - status: {amy_meta['status']}")
     info(f"  - counts.passed: {counts.get('passed')}")
     info(f"  - counts.fail: {counts.get('fail')}")
@@ -119,9 +120,26 @@ def run_test(
             if iteration > 1
             else None
         )
+        amy_elapsed_sec: float | None = None
+        amy_tag = ""
 
         if not amy_path.exists():
-            info(f"[test i{iteration}] Amy 全量测试中...")
+            amy_resolved = resolve_persona_runtime_config(config, amy.name)
+            amy_tag = build_runtime_tag(amy_resolved)
+            announce_persona_call(
+                phase="test",
+                round_num=iteration,
+                persona="amy",
+                action="全量测试中",
+                inputs=[
+                    Path(_relative(final_plan, project_root)),
+                    Path(_relative(last_ruby_impl, project_root)),
+                    *[Path(_relative(Path(path), project_root)) for path in prior_amy],
+                    *[Path(_relative(Path(path), project_root)) for path in prior_ruby_fix],
+                ],
+                output=Path(_relative(amy_path, project_root)),
+                runtime_tag=amy_tag,
+            )
             amy_runtime = _runtime_for(amy, project_root, config)
             amy_boot = format_boot_message(
                 "amy",
@@ -137,7 +155,11 @@ def run_test(
                 max_iterations=max_iterations,
                 vcs_mode=vcs_mode,
             )
-            amy_runtime.call_noninteractive(amy_boot, cwd=project_root, timeout_sec=3600)
+            with Spinner(f"[test it{iteration}] Amy 全量测试中") as spinner:
+                amy_runtime.call_noninteractive(amy_boot, cwd=project_root, timeout_sec=3600)
+            amy_elapsed_sec = spinner.elapsed_sec
+        else:
+            amy_elapsed_sec = None
         amy_meta = validate_artifact(
             amy_path,
             [
@@ -151,6 +173,13 @@ def run_test(
                 "created_at",
             ],
         )
+        if amy_elapsed_sec is not None:
+            render_artifact_summary(
+                amy_path,
+                persona="amy",
+                elapsed_sec=amy_elapsed_sec,
+                runtime_tag=amy_tag,
+            )
         item: dict[str, Any] = {
             "n": iteration,
             "amy_path": _relative(amy_path, project_root),
@@ -176,8 +205,28 @@ def run_test(
             _print_test_result_summary(iteration, amy_meta)
             return state
 
+        ruby_elapsed_sec: float | None = None
+        ruby_tag = ""
         if not ruby_fix_path.exists():
-            info(f"[test i{iteration}] Ruby 修复中...")
+            ruby_resolved = resolve_persona_runtime_config(config, ruby.name)
+            ruby_tag = build_runtime_tag(ruby_resolved)
+            announce_persona_call(
+                phase="test",
+                round_num=iteration,
+                persona="ruby",
+                action="修复中",
+                inputs=[
+                    Path(_relative(final_plan, project_root)),
+                    Path(_relative(last_ruby_impl, project_root)),
+                    *[Path(_relative(Path(path), project_root)) for path in prior_ruby_fix],
+                    *[
+                        Path(_relative(Path(path), project_root))
+                        for path in [*prior_amy, str(amy_path.resolve())]
+                    ],
+                ],
+                output=Path(_relative(ruby_fix_path, project_root)),
+                runtime_tag=ruby_tag,
+            )
             ruby_runtime = _runtime_for(ruby, project_root, config)
             ruby_boot = format_boot_message(
                 "ruby",
@@ -198,7 +247,11 @@ def run_test(
                     else None
                 ),
             )
-            ruby_runtime.call_noninteractive(ruby_boot, cwd=project_root, timeout_sec=1800)
+            with Spinner(f"[test it{iteration}] Ruby 修复中") as spinner:
+                ruby_runtime.call_noninteractive(ruby_boot, cwd=project_root, timeout_sec=1800)
+            ruby_elapsed_sec = spinner.elapsed_sec
+        else:
+            ruby_elapsed_sec = None
         ruby_meta = validate_artifact(
             ruby_fix_path,
             [
@@ -214,6 +267,13 @@ def run_test(
                 "created_at",
             ],
         )
+        if ruby_elapsed_sec is not None:
+            render_artifact_summary(
+                ruby_fix_path,
+                persona="ruby",
+                elapsed_sec=ruby_elapsed_sec,
+                runtime_tag=ruby_tag,
+            )
         item["ruby_fix_path"] = _relative(ruby_fix_path, project_root)
         item["failures_addressed"] = ruby_meta["failures_addressed"]
         item["failures_deferred"] = ruby_meta["failures_deferred"]

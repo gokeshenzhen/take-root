@@ -16,6 +16,7 @@ from take_root.guardrails import (
     write_policy_violation_report,
 )
 from take_root.persona import Persona, find_harness_root, load_persona
+from take_root.phase_ui import announce_persona_call, build_runtime_tag, render_artifact_summary
 from take_root.phases import format_boot_message, validate_artifact
 from take_root.phases.init import run_init
 from take_root.runtimes.base import BaseRuntime, RuntimePolicy
@@ -23,7 +24,7 @@ from take_root.runtimes.claude import ClaudeRuntime
 from take_root.runtimes.codex import CodexRuntime
 from take_root.state import reconcile_state_from_disk, transition
 from take_root.summary import write_run_summary
-from take_root.ui import ask, info, warn
+from take_root.ui import Spinner, ask, info, warn
 
 MAX_PLAN_ROUNDS = 5
 
@@ -385,7 +386,21 @@ def run_plan(
             str((plan_dir / f"jack_r{round_num - 1}.md").resolve()) if round_num > 1 else None
         )
         if not robin_path.exists():
-            info(f"[plan r{round_num}] Robin 评审中...")
+            robin_resolved = resolve_persona_runtime_config(config, robin.name)
+            robin_tag = build_runtime_tag(robin_resolved)
+            announce_persona_call(
+                phase="plan",
+                round_num=round_num,
+                persona="robin",
+                action="评审中",
+                inputs=[
+                    Path(_relative(jeff_path, project_root)),
+                    *[Path(_relative(Path(path), project_root)) for path in prior_robin],
+                    *[Path(_relative(Path(path), project_root)) for path in prior_jack],
+                ],
+                output=Path(_relative(robin_path, project_root)),
+                runtime_tag=robin_tag,
+            )
             robin_runtime = _runtime_for(robin, project_root, config)
             robin_boot = format_boot_message(
                 "robin",
@@ -398,34 +413,41 @@ def run_plan(
                 latest_jack=latest_jack,
                 output_path=str(robin_path.resolve()),
             )
-            robin_meta = _run_review_only_persona_with_validation(
-                runtime=robin_runtime,
-                persona=robin,
-                project_root=project_root,
-                boot_message=robin_boot,
-                output_path=robin_path,
-                context_files=_review_context_files(
-                    project_root=project_root,
+            with Spinner(f"[plan r{round_num}] Robin 评审中") as spinner:
+                robin_meta = _run_review_only_persona_with_validation(
+                    runtime=robin_runtime,
                     persona=robin,
-                    proposal=jeff_path,
-                    prior_robin=prior_robin,
-                    prior_jack=prior_jack,
-                    latest_peer=latest_jack,
-                ),
-                timeout_sec=900,
-                validate=_artifact_validator(
-                    robin_path,
-                    [
-                        "artifact",
-                        "round",
-                        "status",
-                        "addresses",
-                        "created_at",
-                        "remaining_concerns",
-                    ],
-                ),
-                persona_name="robin",
-                artifact_contract=_robin_artifact_contract(round_num),
+                    project_root=project_root,
+                    boot_message=robin_boot,
+                    output_path=robin_path,
+                    context_files=_review_context_files(
+                        project_root=project_root,
+                        persona=robin,
+                        proposal=jeff_path,
+                        prior_robin=prior_robin,
+                        prior_jack=prior_jack,
+                        latest_peer=latest_jack,
+                    ),
+                    timeout_sec=900,
+                    validate=_artifact_validator(
+                        robin_path,
+                        [
+                            "artifact",
+                            "round",
+                            "status",
+                            "addresses",
+                            "created_at",
+                            "remaining_concerns",
+                        ],
+                    ),
+                    persona_name="robin",
+                    artifact_contract=_robin_artifact_contract(round_num),
+                )
+            render_artifact_summary(
+                robin_path,
+                persona="robin",
+                elapsed_sec=spinner.elapsed_sec,
+                runtime_tag=robin_tag,
             )
         else:
             robin_meta = validate_artifact(
@@ -435,7 +457,21 @@ def run_plan(
 
         prior_robin_plus = [*prior_robin, str(robin_path.resolve())]
         if not jack_path.exists():
-            info(f"[plan r{round_num}] Jack 攻防评审中...")
+            jack_resolved = resolve_persona_runtime_config(config, jack.name)
+            jack_tag = build_runtime_tag(jack_resolved)
+            announce_persona_call(
+                phase="plan",
+                round_num=round_num,
+                persona="jack",
+                action="攻防评审中",
+                inputs=[
+                    Path(_relative(jeff_path, project_root)),
+                    *[Path(_relative(Path(path), project_root)) for path in prior_robin_plus],
+                    *[Path(_relative(Path(path), project_root)) for path in prior_jack],
+                ],
+                output=Path(_relative(jack_path, project_root)),
+                runtime_tag=jack_tag,
+            )
             jack_runtime = _runtime_for(jack, project_root, config)
             jack_boot = format_boot_message(
                 "jack",
@@ -448,27 +484,41 @@ def run_plan(
                 latest_robin=str(robin_path.resolve()),
                 output_path=str(jack_path.resolve()),
             )
-            jack_meta = _run_review_only_persona_with_validation(
-                runtime=jack_runtime,
-                persona=jack,
-                project_root=project_root,
-                boot_message=jack_boot,
-                output_path=jack_path,
-                context_files=_review_context_files(
-                    project_root=project_root,
+            with Spinner(f"[plan r{round_num}] Jack 攻防评审中") as spinner:
+                jack_meta = _run_review_only_persona_with_validation(
+                    runtime=jack_runtime,
                     persona=jack,
-                    proposal=jeff_path,
-                    prior_robin=prior_robin_plus,
-                    prior_jack=prior_jack,
-                    latest_peer=str(robin_path.resolve()),
-                ),
-                timeout_sec=900,
-                validate=_artifact_validator(
-                    jack_path,
-                    ["artifact", "round", "status", "addresses", "created_at", "open_attacks"],
-                ),
-                persona_name="jack",
-                artifact_contract=_jack_artifact_contract(round_num),
+                    project_root=project_root,
+                    boot_message=jack_boot,
+                    output_path=jack_path,
+                    context_files=_review_context_files(
+                        project_root=project_root,
+                        persona=jack,
+                        proposal=jeff_path,
+                        prior_robin=prior_robin_plus,
+                        prior_jack=prior_jack,
+                        latest_peer=str(robin_path.resolve()),
+                    ),
+                    timeout_sec=900,
+                    validate=_artifact_validator(
+                        jack_path,
+                        [
+                            "artifact",
+                            "round",
+                            "status",
+                            "addresses",
+                            "created_at",
+                            "open_attacks",
+                        ],
+                    ),
+                    persona_name="jack",
+                    artifact_contract=_jack_artifact_contract(round_num),
+                )
+            render_artifact_summary(
+                jack_path,
+                persona="jack",
+                elapsed_sec=spinner.elapsed_sec,
+                runtime_tag=jack_tag,
             )
         else:
             jack_meta = validate_artifact(
@@ -503,7 +553,27 @@ def run_plan(
 
     final_plan = plan_dir / "final_plan.md"
     if not final_plan.exists():
-        info("[plan] Robin 最终方案收敛输出中...")
+        robin_resolved = resolve_persona_runtime_config(config, robin.name)
+        robin_tag = build_runtime_tag(robin_resolved)
+        announce_persona_call(
+            phase="plan",
+            round_num=None,
+            persona="robin",
+            action="最终方案收敛输出中",
+            inputs=[
+                Path(_relative(jeff_path, project_root)),
+                *[
+                    Path(_relative(plan_dir / f"robin_r{i}.md", project_root))
+                    for i in range(1, len(rounds) + 1)
+                ],
+                *[
+                    Path(_relative(plan_dir / f"jack_r{i}.md", project_root))
+                    for i in range(1, len(rounds) + 1)
+                ],
+            ],
+            output=Path(_relative(final_plan, project_root)),
+            runtime_tag=robin_tag,
+        )
         robin_runtime = _runtime_for(robin, project_root, config)
         rounds_used = len(rounds)
         finalize_boot = format_boot_message(
@@ -519,38 +589,47 @@ def run_plan(
             ],
             output_path=str(final_plan.resolve()),
         )
-        _run_review_only_persona_with_validation(
-            runtime=robin_runtime,
-            persona=robin,
-            project_root=project_root,
-            boot_message=finalize_boot,
-            output_path=final_plan,
-            context_files=_review_context_files(
-                project_root=project_root,
+        with Spinner("[plan] Robin 最终方案收敛输出中") as spinner:
+            _run_review_only_persona_with_validation(
+                runtime=robin_runtime,
                 persona=robin,
-                proposal=jeff_path,
-                prior_robin=[
-                    str((plan_dir / f"robin_r{i}.md").resolve()) for i in range(1, rounds_used + 1)
-                ],
-                prior_jack=[
-                    str((plan_dir / f"jack_r{i}.md").resolve()) for i in range(1, rounds_used + 1)
-                ],
-            ),
-            timeout_sec=900,
-            validate=_artifact_validator(
-                final_plan,
-                [
-                    "artifact",
-                    "version",
-                    "project_root",
-                    "based_on",
-                    "negotiation_rounds",
-                    "converged",
-                    "created_at",
-                ],
-            ),
-            persona_name="robin",
-            artifact_contract=_final_plan_artifact_contract(),
+                project_root=project_root,
+                boot_message=finalize_boot,
+                output_path=final_plan,
+                context_files=_review_context_files(
+                    project_root=project_root,
+                    persona=robin,
+                    proposal=jeff_path,
+                    prior_robin=[
+                        str((plan_dir / f"robin_r{i}.md").resolve())
+                        for i in range(1, rounds_used + 1)
+                    ],
+                    prior_jack=[
+                        str((plan_dir / f"jack_r{i}.md").resolve())
+                        for i in range(1, rounds_used + 1)
+                    ],
+                ),
+                timeout_sec=900,
+                validate=_artifact_validator(
+                    final_plan,
+                    [
+                        "artifact",
+                        "version",
+                        "project_root",
+                        "based_on",
+                        "negotiation_rounds",
+                        "converged",
+                        "created_at",
+                    ],
+                ),
+                persona_name="robin",
+                artifact_contract=_final_plan_artifact_contract(),
+            )
+        render_artifact_summary(
+            final_plan,
+            persona="robin",
+            elapsed_sec=spinner.elapsed_sec,
+            runtime_tag=robin_tag,
         )
     else:
         validate_artifact(

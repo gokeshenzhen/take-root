@@ -8,13 +8,14 @@ from take_root.artifacts import artifact_path
 from take_root.config import TakeRootConfig, require_config, resolve_persona_runtime_config
 from take_root.errors import ConfigError
 from take_root.persona import Persona, find_harness_root, load_persona
+from take_root.phase_ui import announce_persona_call, build_runtime_tag, render_artifact_summary
 from take_root.phases import format_boot_message, validate_artifact
 from take_root.runtimes.base import BaseRuntime, RuntimePolicy
 from take_root.runtimes.claude import ClaudeRuntime
 from take_root.runtimes.codex import CodexRuntime
 from take_root.state import reconcile_state_from_disk, transition
 from take_root.summary import write_run_summary
-from take_root.ui import info
+from take_root.ui import Spinner
 from take_root.vcs import VCSHandler, select_vcs_mode
 
 DEFAULT_CODE_ROUNDS = 5
@@ -227,9 +228,25 @@ def run_code(
             else None
         )
         vcs_handler.pre_round(round_num)
+        ruby_elapsed_sec: float | None = None
+        ruby_tag = ""
 
         if not ruby_path.exists():
-            info(f"[code r{round_num}] Ruby 实现中...")
+            ruby_resolved = resolve_persona_runtime_config(config, ruby.name)
+            ruby_tag = build_runtime_tag(ruby_resolved)
+            announce_persona_call(
+                phase="code",
+                round_num=round_num,
+                persona="ruby",
+                action="实现中",
+                inputs=[
+                    Path(_relative(final_plan, project_root)),
+                    *[Path(_relative(Path(path), project_root)) for path in prior_ruby],
+                    *[Path(_relative(Path(path), project_root)) for path in prior_peter],
+                ],
+                output=Path(_relative(ruby_path, project_root)),
+                runtime_tag=ruby_tag,
+            )
             ruby_runtime = _runtime_for(ruby, project_root, config)
             ruby_boot = format_boot_message(
                 "ruby",
@@ -259,7 +276,11 @@ def run_code(
                 len(prior_peter),
                 mode_name,
             )
-            ruby_runtime.call_noninteractive(ruby_boot, cwd=project_root, timeout_sec=1800)
+            with Spinner(f"[code r{round_num}] Ruby 实现中") as spinner:
+                ruby_runtime.call_noninteractive(ruby_boot, cwd=project_root, timeout_sec=1800)
+            ruby_elapsed_sec = spinner.elapsed_sec
+        else:
+            ruby_elapsed_sec = None
         ruby_meta = validate_artifact(
             ruby_path,
             [
@@ -275,6 +296,13 @@ def run_code(
                 "open_pushbacks",
             ],
         )
+        if ruby_elapsed_sec is not None:
+            render_artifact_summary(
+                ruby_path,
+                persona="ruby",
+                elapsed_sec=ruby_elapsed_sec,
+                runtime_tag=ruby_tag,
+            )
         files_changed = _normalize_files_changed(ruby_meta.get("files_changed"))
         vcs_result = vcs_handler.post_round(
             round_num=round_num,
@@ -290,9 +318,25 @@ def run_code(
             "commit_sha": vcs_metadata["commit_sha"],
             "snapshot_dir": vcs_metadata["snapshot_dir"],
         }
+        peter_tag = ""
 
         if not peter_path.exists():
-            info(f"[code r{round_num}] Peter 评审中...")
+            peter_resolved = resolve_persona_runtime_config(config, peter.name)
+            peter_tag = build_runtime_tag(peter_resolved)
+            announce_persona_call(
+                phase="code",
+                round_num=round_num,
+                persona="peter",
+                action="评审中",
+                inputs=[
+                    Path(_relative(final_plan, project_root)),
+                    *[Path(_relative(Path(path), project_root)) for path in prior_ruby],
+                    *[Path(_relative(Path(path), project_root)) for path in prior_peter],
+                    Path(_relative(ruby_path, project_root)),
+                ],
+                output=Path(_relative(peter_path, project_root)),
+                runtime_tag=peter_tag,
+            )
             peter_runtime = _runtime_for(peter, project_root, config)
             review_range = _review_range(mode_name, rounds, current_round)
             peter_boot_kwargs: dict[str, Any] = {
@@ -325,22 +369,30 @@ def run_code(
                 mode_name,
                 review_range,
             )
-            peter_meta = _call_noninteractive_with_artifact_retry(
-                runtime=peter_runtime,
-                boot_message=peter_boot,
-                cwd=project_root,
-                timeout_sec=1800,
-                output_path=peter_path,
-                required_keys=[
-                    "artifact",
-                    "round",
-                    "status",
-                    "addresses",
-                    "reviewed_commit",
-                    "files_reviewed",
-                    "open_findings",
-                    "created_at",
-                ],
+            with Spinner(f"[code r{round_num}] Peter 评审中") as spinner:
+                peter_meta = _call_noninteractive_with_artifact_retry(
+                    runtime=peter_runtime,
+                    boot_message=peter_boot,
+                    cwd=project_root,
+                    timeout_sec=1800,
+                    output_path=peter_path,
+                    required_keys=[
+                        "artifact",
+                        "round",
+                        "status",
+                        "addresses",
+                        "reviewed_commit",
+                        "files_reviewed",
+                        "open_findings",
+                        "created_at",
+                    ],
+                )
+            peter_elapsed_sec = spinner.elapsed_sec
+            render_artifact_summary(
+                peter_path,
+                persona="peter",
+                elapsed_sec=peter_elapsed_sec,
+                runtime_tag=peter_tag,
             )
         else:
             peter_meta = validate_artifact(

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import os
 import sys
 import termios
+import threading
+import time
 import tty
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, Literal, TextIO
 
 from take_root.summary import build_summary_view
 
@@ -20,6 +23,85 @@ def warn(message: str) -> None:
 
 def error(message: str) -> None:
     print(f"错误: {message}", file=sys.stderr)
+
+
+def _color_output_enabled() -> bool:
+    if os.getenv("NO_COLOR") is not None:
+        return False
+    if os.getenv("TAKE_ROOT_DISABLE_COLOR") is not None:
+        return False
+    try:
+        return sys.stderr.isatty()
+    except Exception:
+        return False
+
+
+def colorize(text: str, color: Literal["cyan", "green", "yellow", "red", "dim"]) -> str:
+    """TTY-aware ANSI wrap; no-op on non-TTY or NO_COLOR."""
+    if not _color_output_enabled():
+        return text
+    code = {
+        "cyan": "36",
+        "green": "32",
+        "yellow": "33",
+        "red": "31",
+        "dim": "2",
+    }[color]
+    return f"\x1b[{code}m{text}\x1b[0m"
+
+
+class Spinner:
+    """Render a small spinner on stderr while a phase call is running."""
+
+    _frames = ("⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇")
+
+    def __init__(self, label: str) -> None:
+        self.label = label
+        self._start = 0.0
+        self._end: float | None = None
+        self._thread: threading.Thread | None = None
+        self._stop = threading.Event()
+        self._interactive = False
+
+    def __enter__(self) -> Spinner:
+        self._start = time.monotonic()
+        self._interactive = _color_output_enabled()
+        if not self._interactive:
+            info(self.label)
+            return self
+        self._thread = threading.Thread(target=self._spin, daemon=True)
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self._end = time.monotonic()
+        if not self._interactive:
+            return
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=0.2)
+        sys.stderr.write("\r\x1b[2K")
+        sys.stderr.flush()
+
+    @property
+    def elapsed_sec(self) -> float:
+        end = self._end if self._end is not None else time.monotonic()
+        return max(0.0, end - self._start)
+
+    def _spin(self) -> None:
+        index = 0
+        while not self._stop.wait(0.1):
+            frame = self._frames[index % len(self._frames)]
+            elapsed = self._format_elapsed(self.elapsed_sec)
+            sys.stderr.write(f"\r{colorize(self.label, 'dim')} {frame} {elapsed}")
+            sys.stderr.flush()
+            index += 1
+
+    @staticmethod
+    def _format_elapsed(elapsed_sec: float) -> str:
+        total = int(elapsed_sec)
+        minutes, seconds = divmod(total, 60)
+        return f"{minutes:02d}:{seconds:02d}"
 
 
 def ask(prompt: str, default: str | None = None) -> str:
