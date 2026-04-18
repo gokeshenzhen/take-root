@@ -8,4 +8,5 @@ __pycache__/
 src/take_root.egg-info/
 .take_root/
 REVIEW_NOTES.md
-.plan
+plan/
+.codex
