@@ -81,7 +81,7 @@ def _key_artifacts(state: dict[str, Any]) -> list[str]:
     code_rounds = code.get("rounds", [])
     if isinstance(code_rounds, list) and code_rounds:
         latest_code_round = code_rounds[-1]
-        for key in ("ruby_path", "peter_path"):
+        for key in ("lucy_path", "peter_path"):
             value = latest_code_round.get(key)
             if isinstance(value, str):
                 paths.append(value)
@@ -89,7 +89,7 @@ def _key_artifacts(state: dict[str, Any]) -> list[str]:
     iterations = test.get("iterations", [])
     if isinstance(iterations, list) and iterations:
         latest_iteration = iterations[-1]
-        for key in ("amy_path", "ruby_fix_path"):
+        for key in ("amy_path", "lucy_fix_path"):
             value = latest_iteration.get(key)
             if isinstance(value, str):
                 paths.append(value)

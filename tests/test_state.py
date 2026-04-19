@@ -88,7 +88,7 @@ def test_reconcile_state_from_disk_updates_plan(tmp_path: Path) -> None:
     load_or_create_state(tmp_path)
     _write_artifact(tmp_path / ".take_root" / "plan" / "jeff_proposal.md", "draft")
     _write_artifact(tmp_path / ".take_root" / "plan" / "robin_r1.md", "ongoing")
-    _write_artifact(tmp_path / ".take_root" / "plan" / "jack_r1.md", "ongoing")
+    _write_artifact(tmp_path / ".take_root" / "plan" / "neo_r1.md", "ongoing")
     _write_artifact(tmp_path / ".take_root" / "plan" / "final_plan.md", "done")
     result = reconcile_state_from_disk(tmp_path)
     plan = result["phases"]["plan"]
@@ -115,8 +115,8 @@ def test_reconcile_state_from_disk_clears_stale_plan_rounds(tmp_path: Path) -> N
                             "n": 1,
                             "robin_path": ".take_root/plan/robin_r1.md",
                             "robin_status": "ongoing",
-                            "jack_path": ".take_root/plan/jack_r1.md",
-                            "jack_status": "ongoing",
+                            "neo_path": ".take_root/plan/neo_r1.md",
+                            "neo_status": "ongoing",
                         }
                     ],
                     "final_plan_path": ".take_root/plan/final_plan.md",
@@ -139,7 +139,7 @@ def test_reconcile_state_from_disk_clears_stale_plan_rounds(tmp_path: Path) -> N
 def test_reconcile_code_handoff_preserves_exhausted_stop(tmp_path: Path) -> None:
     load_or_create_state(tmp_path)
     _write_final_plan(tmp_path / ".take_root" / "plan" / "final_plan.md")
-    _write_artifact(tmp_path / ".take_root" / "code" / "ruby_r1.md", "ongoing")
+    _write_artifact(tmp_path / ".take_root" / "code" / "lucy_r1.md", "ongoing")
     _write_artifact(tmp_path / ".take_root" / "code" / "peter_r1.md", "ongoing")
     transition(
         tmp_path,
@@ -172,7 +172,7 @@ def test_reconcile_code_handoff_falls_back_to_in_progress_when_budget_changes(
 ) -> None:
     load_or_create_state(tmp_path)
     _write_final_plan(tmp_path / ".take_root" / "plan" / "final_plan.md")
-    _write_artifact(tmp_path / ".take_root" / "code" / "ruby_r1.md", "ongoing")
+    _write_artifact(tmp_path / ".take_root" / "code" / "lucy_r1.md", "ongoing")
     _write_artifact(tmp_path / ".take_root" / "code" / "peter_r1.md", "ongoing")
     transition(
         tmp_path,
@@ -202,7 +202,7 @@ def test_reconcile_code_handoff_falls_back_to_in_progress_when_budget_changes(
 def test_reconcile_code_handoff_recomputes_converged_from_artifacts(tmp_path: Path) -> None:
     load_or_create_state(tmp_path)
     _write_final_plan(tmp_path / ".take_root" / "plan" / "final_plan.md")
-    _write_artifact(tmp_path / ".take_root" / "code" / "ruby_r1.md", "converged")
+    _write_artifact(tmp_path / ".take_root" / "code" / "lucy_r1.md", "converged")
     _write_artifact(tmp_path / ".take_root" / "code" / "peter_r1.md", "converged")
     transition(
         tmp_path,
@@ -232,9 +232,9 @@ def test_reconcile_code_handoff_recomputes_converged_from_artifacts(tmp_path: Pa
 def test_reconcile_code_handoff_uses_latest_round_for_convergence(tmp_path: Path) -> None:
     load_or_create_state(tmp_path)
     _write_final_plan(tmp_path / ".take_root" / "plan" / "final_plan.md")
-    _write_artifact(tmp_path / ".take_root" / "code" / "ruby_r1.md", "ongoing")
+    _write_artifact(tmp_path / ".take_root" / "code" / "lucy_r1.md", "ongoing")
     _write_artifact(tmp_path / ".take_root" / "code" / "peter_r1.md", "converged")
-    _write_artifact(tmp_path / ".take_root" / "code" / "ruby_r2.md", "converged")
+    _write_artifact(tmp_path / ".take_root" / "code" / "lucy_r2.md", "converged")
     _write_artifact(tmp_path / ".take_root" / "code" / "peter_r2.md", "converged")
 
     result = reconcile_state_from_disk(tmp_path)
@@ -250,9 +250,9 @@ def test_run_reset_preserves_config_and_context_by_default(tmp_path: Path) -> No
     save_config(tmp_path, default_take_root_config())
     load_or_create_state(tmp_path)
     _write_artifact(tmp_path / ".take_root" / "plan" / "jeff_proposal.md", "draft")
-    _write_artifact(tmp_path / ".take_root" / "code" / "ruby_r1.md", "ongoing")
+    _write_artifact(tmp_path / ".take_root" / "code" / "lucy_r1.md", "ongoing")
     (tmp_path / ".take_root" / "personas").mkdir(parents=True, exist_ok=True)
-    (tmp_path / ".take_root" / "personas" / "ruby.md").write_text("override\n", encoding="utf-8")
+    (tmp_path / ".take_root" / "personas" / "lucy.md").write_text("override\n", encoding="utf-8")
     (tmp_path / "CLAUDE.md").write_text("# ctx\n", encoding="utf-8")
     (tmp_path / "AGENTS.md").symlink_to("CLAUDE.md")
 
@@ -260,11 +260,11 @@ def test_run_reset_preserves_config_and_context_by_default(tmp_path: Path) -> No
     trash_dir = _latest_trash_dir(tmp_path)
 
     assert (tmp_path / ".take_root" / "config.yaml").exists()
-    assert (tmp_path / ".take_root" / "personas" / "ruby.md").exists()
+    assert (tmp_path / ".take_root" / "personas" / "lucy.md").exists()
     assert not (tmp_path / ".take_root" / "plan" / "jeff_proposal.md").exists()
-    assert not (tmp_path / ".take_root" / "code" / "ruby_r1.md").exists()
+    assert not (tmp_path / ".take_root" / "code" / "lucy_r1.md").exists()
     assert (trash_dir / "plan" / "jeff_proposal.md").exists()
-    assert (trash_dir / "code" / "ruby_r1.md").exists()
+    assert (trash_dir / "code" / "lucy_r1.md").exists()
     assert (trash_dir / "state.json").exists()
     assert state["current_phase"] == "plan"
     assert state["phases"]["init"]["done"] is True
@@ -297,7 +297,7 @@ def test_run_reset_to_code_preserves_plan_and_clears_later_phases(tmp_path: Path
     (tmp_path / "CLAUDE.md").write_text("# ctx\n", encoding="utf-8")
     _write_artifact(tmp_path / ".take_root" / "plan" / "jeff_proposal.md", "draft")
     _write_artifact(tmp_path / ".take_root" / "plan" / "robin_r1.md", "converged")
-    _write_artifact(tmp_path / ".take_root" / "plan" / "jack_r1.md", "converged")
+    _write_artifact(tmp_path / ".take_root" / "plan" / "neo_r1.md", "converged")
     (tmp_path / ".take_root" / "plan" / "final_plan.md").write_text(
         (
             "---\n"
@@ -313,7 +313,7 @@ def test_run_reset_to_code_preserves_plan_and_clears_later_phases(tmp_path: Path
         ),
         encoding="utf-8",
     )
-    _write_artifact(tmp_path / ".take_root" / "code" / "ruby_r1.md", "converged")
+    _write_artifact(tmp_path / ".take_root" / "code" / "lucy_r1.md", "converged")
     _write_artifact(tmp_path / ".take_root" / "code" / "peter_r1.md", "converged")
     _write_artifact(tmp_path / ".take_root" / "test" / "amy_r1.md", "all_pass")
 
@@ -321,9 +321,9 @@ def test_run_reset_to_code_preserves_plan_and_clears_later_phases(tmp_path: Path
     trash_dir = _latest_trash_dir(tmp_path)
 
     assert (tmp_path / ".take_root" / "plan" / "final_plan.md").exists()
-    assert not (tmp_path / ".take_root" / "code" / "ruby_r1.md").exists()
+    assert not (tmp_path / ".take_root" / "code" / "lucy_r1.md").exists()
     assert not (tmp_path / ".take_root" / "test" / "amy_r1.md").exists()
-    assert (trash_dir / "code" / "ruby_r1.md").exists()
+    assert (trash_dir / "code" / "lucy_r1.md").exists()
     assert (trash_dir / "test" / "amy_r1.md").exists()
     assert state["current_phase"] == "code"
     assert state["phases"]["plan"]["status"] == "done"
@@ -335,7 +335,7 @@ def test_run_reset_to_test_preserves_completed_code(tmp_path: Path) -> None:
     load_or_create_state(tmp_path)
     _write_artifact(tmp_path / ".take_root" / "plan" / "jeff_proposal.md", "draft")
     _write_artifact(tmp_path / ".take_root" / "plan" / "robin_r1.md", "converged")
-    _write_artifact(tmp_path / ".take_root" / "plan" / "jack_r1.md", "converged")
+    _write_artifact(tmp_path / ".take_root" / "plan" / "neo_r1.md", "converged")
     (tmp_path / ".take_root" / "plan" / "final_plan.md").write_text(
         (
             "---\n"
@@ -351,15 +351,15 @@ def test_run_reset_to_test_preserves_completed_code(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
-    _write_artifact(tmp_path / ".take_root" / "code" / "ruby_r1.md", "converged")
+    _write_artifact(tmp_path / ".take_root" / "code" / "lucy_r1.md", "converged")
     _write_artifact(tmp_path / ".take_root" / "code" / "peter_r1.md", "converged")
     _write_artifact(tmp_path / ".take_root" / "test" / "amy_r1.md", "has_failures")
-    _write_artifact(tmp_path / ".take_root" / "test" / "ruby_fix_r1.md", "done")
+    _write_artifact(tmp_path / ".take_root" / "test" / "lucy_fix_r1.md", "done")
 
     state = run_reset(tmp_path, to_phase="test", force=True)
     trash_dir = _latest_trash_dir(tmp_path)
 
-    assert (tmp_path / ".take_root" / "code" / "ruby_r1.md").exists()
+    assert (tmp_path / ".take_root" / "code" / "lucy_r1.md").exists()
     assert not (tmp_path / ".take_root" / "test" / "amy_r1.md").exists()
     assert (trash_dir / "test" / "amy_r1.md").exists()
     assert state["current_phase"] == "test"

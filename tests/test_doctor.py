@@ -120,7 +120,7 @@ def test_doctor_uses_codex_runtime_for_codex_provider(monkeypatch, tmp_path: Pat
     monkeypatch.setenv("TRACE_DIR", str(trace_dir))
     save_config(tmp_path, default_take_root_config())
 
-    run_doctor(tmp_path, "ruby")
+    run_doctor(tmp_path, "lucy")
 
     argv_text = (trace_dir / "codex_argv.txt").read_text(encoding="utf-8")
     assert "exec" in argv_text

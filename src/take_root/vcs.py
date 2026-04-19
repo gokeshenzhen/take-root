@@ -201,7 +201,7 @@ def select_vcs_mode(
     answer = (
         prompt_fn(
             "当前项目未启用 Git。建议开启版本管理：\n"
-            "  [1] git-init   - 在当前目录 git init，并自动提交每轮 Ruby 变更\n"
+            "  [1] git-init   - 在当前目录 git init，并自动提交每轮 Lucy 变更\n"
             "  [2] snapshot   - 每轮将变更文件拷贝到 .take_root/code/snapshots/r{N}/\n"
             "  [3] off        - 不做版本保护，无法回滚\n"
             "  [4] abort      - 退出后你自行配置\n"

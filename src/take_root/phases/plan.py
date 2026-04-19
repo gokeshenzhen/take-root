@@ -91,14 +91,14 @@ def _maybe_refresh_claude_md(project_root: Path) -> None:
 def _round_paths(project_root: Path, round_num: int) -> tuple[Path, Path]:
     return (
         artifact_path(project_root, "plan", f"robin_r{round_num}.md"),
-        artifact_path(project_root, "plan", f"jack_r{round_num}.md"),
+        artifact_path(project_root, "plan", f"neo_r{round_num}.md"),
     )
 
 
 def _status_pair(round_item: dict[str, Any]) -> tuple[str, str]:
     return (
         str(round_item.get("robin_status", "ongoing")),
-        str(round_item.get("jack_status", "ongoing")),
+        str(round_item.get("neo_status", "ongoing")),
     )
 
 
@@ -112,7 +112,7 @@ def _review_context_files(
     persona: Persona,
     proposal: Path,
     prior_robin: list[str],
-    prior_jack: list[str],
+    prior_neo: list[str],
     latest_peer: str | None = None,
 ) -> list[Path]:
     files = [
@@ -121,7 +121,7 @@ def _review_context_files(
         persona.source_path,
         proposal,
         *[Path(path) for path in prior_robin],
-        *[Path(path) for path in prior_jack],
+        *[Path(path) for path in prior_neo],
     ]
     if latest_peer is not None:
         files.append(Path(latest_peer))
@@ -277,13 +277,13 @@ def _artifact_validator(path: Path, required_keys: list[str]) -> Callable[[], di
 def _robin_artifact_contract(round_num: int) -> str:
     headings = [f"# Robin — Round {round_num} Review"]
     if round_num > 1:
-        headings.append("## 1. 对 Jack 的回应")
+        headings.append("## 1. 对 Neo 的回应")
     headings.extend(["## 2. 新发现 / 我的关切", "## 3. 收敛评估"])
     return "\n".join(headings)
 
 
-def _jack_artifact_contract(round_num: int) -> str:
-    headings = [f"# Jack — Round {round_num} Adversarial Review"]
+def _neo_artifact_contract(round_num: int) -> str:
+    headings = [f"# Neo — Round {round_num} Adversarial Review"]
     if round_num > 1:
         headings.append("## 1. 对 Robin 上轮回应的处置")
     headings.extend(["## 2. 新攻击点", "## 3. 收敛评估"])
@@ -310,7 +310,7 @@ def _resume_round_from_state(rounds: list[dict[str, Any]]) -> int:
     for index, item in enumerate(rounds, start=1):
         if int(item.get("n", index)) != index:
             return index
-        if "robin_path" not in item or "jack_path" not in item:
+        if "robin_path" not in item or "neo_path" not in item:
             return index
     return len(rounds) + 1
 
@@ -332,8 +332,8 @@ def run_plan(
     harness_root = find_harness_root()
     jeff = load_persona("jeff", project_root, harness_root=harness_root)
     robin = load_persona("robin", project_root, harness_root=harness_root)
-    jack = load_persona("jack", project_root, harness_root=harness_root)
-    for persona in (jeff, robin, jack):
+    neo = load_persona("neo", project_root, harness_root=harness_root)
+    for persona in (jeff, robin, neo):
         _check_runtime_available(resolve_persona_runtime_config(config, persona.name).runtime_name)
 
     plan_dir = project_root / ".take_root" / "plan"
@@ -379,11 +379,11 @@ def run_plan(
     start_round = _resume_round_from_state(rounds)
     converged = False
     for round_num in range(start_round, max_rounds + 1):
-        robin_path, jack_path = _round_paths(project_root, round_num)
+        robin_path, neo_path = _round_paths(project_root, round_num)
         prior_robin = [str((plan_dir / f"robin_r{i}.md").resolve()) for i in range(1, round_num)]
-        prior_jack = [str((plan_dir / f"jack_r{i}.md").resolve()) for i in range(1, round_num)]
-        latest_jack = (
-            str((plan_dir / f"jack_r{round_num - 1}.md").resolve()) if round_num > 1 else None
+        prior_neo = [str((plan_dir / f"neo_r{i}.md").resolve()) for i in range(1, round_num)]
+        latest_neo = (
+            str((plan_dir / f"neo_r{round_num - 1}.md").resolve()) if round_num > 1 else None
         )
         if not robin_path.exists():
             robin_resolved = resolve_persona_runtime_config(config, robin.name)
@@ -396,7 +396,7 @@ def run_plan(
                 inputs=[
                     Path(_relative(jeff_path, project_root)),
                     *[Path(_relative(Path(path), project_root)) for path in prior_robin],
-                    *[Path(_relative(Path(path), project_root)) for path in prior_jack],
+                    *[Path(_relative(Path(path), project_root)) for path in prior_neo],
                 ],
                 output=Path(_relative(robin_path, project_root)),
                 runtime_tag=robin_tag,
@@ -409,8 +409,8 @@ def run_plan(
                 project_root=str(project_root.resolve()),
                 proposal=str(jeff_path.resolve()),
                 prior_robin=prior_robin,
-                prior_jack=prior_jack,
-                latest_jack=latest_jack,
+                prior_neo=prior_neo,
+                latest_neo=latest_neo,
                 output_path=str(robin_path.resolve()),
             )
             with Spinner(f"[plan r{round_num}] Robin 评审中") as spinner:
@@ -425,8 +425,8 @@ def run_plan(
                         persona=robin,
                         proposal=jeff_path,
                         prior_robin=prior_robin,
-                        prior_jack=prior_jack,
-                        latest_peer=latest_jack,
+                        prior_neo=prior_neo,
+                        latest_peer=latest_neo,
                     ),
                     timeout_sec=900,
                     validate=_artifact_validator(
@@ -456,52 +456,52 @@ def run_plan(
             )
 
         prior_robin_plus = [*prior_robin, str(robin_path.resolve())]
-        if not jack_path.exists():
-            jack_resolved = resolve_persona_runtime_config(config, jack.name)
-            jack_tag = build_runtime_tag(jack_resolved)
+        if not neo_path.exists():
+            neo_resolved = resolve_persona_runtime_config(config, neo.name)
+            neo_tag = build_runtime_tag(neo_resolved)
             announce_persona_call(
                 phase="plan",
                 round_num=round_num,
-                persona="jack",
+                persona="neo",
                 action="攻防评审中",
                 inputs=[
                     Path(_relative(jeff_path, project_root)),
                     *[Path(_relative(Path(path), project_root)) for path in prior_robin_plus],
-                    *[Path(_relative(Path(path), project_root)) for path in prior_jack],
+                    *[Path(_relative(Path(path), project_root)) for path in prior_neo],
                 ],
-                output=Path(_relative(jack_path, project_root)),
-                runtime_tag=jack_tag,
+                output=Path(_relative(neo_path, project_root)),
+                runtime_tag=neo_tag,
             )
-            jack_runtime = _runtime_for(jack, project_root, config)
-            jack_boot = format_boot_message(
-                "jack",
+            neo_runtime = _runtime_for(neo, project_root, config)
+            neo_boot = format_boot_message(
+                "neo",
                 mode="review_round",
                 round=round_num,
                 project_root=str(project_root.resolve()),
                 proposal=str(jeff_path.resolve()),
                 prior_robin=prior_robin_plus,
-                prior_jack=prior_jack,
+                prior_neo=prior_neo,
                 latest_robin=str(robin_path.resolve()),
-                output_path=str(jack_path.resolve()),
+                output_path=str(neo_path.resolve()),
             )
-            with Spinner(f"[plan r{round_num}] Jack 攻防评审中") as spinner:
-                jack_meta = _run_review_only_persona_with_validation(
-                    runtime=jack_runtime,
-                    persona=jack,
+            with Spinner(f"[plan r{round_num}] Neo 攻防评审中") as spinner:
+                neo_meta = _run_review_only_persona_with_validation(
+                    runtime=neo_runtime,
+                    persona=neo,
                     project_root=project_root,
-                    boot_message=jack_boot,
-                    output_path=jack_path,
+                    boot_message=neo_boot,
+                    output_path=neo_path,
                     context_files=_review_context_files(
                         project_root=project_root,
-                        persona=jack,
+                        persona=neo,
                         proposal=jeff_path,
                         prior_robin=prior_robin_plus,
-                        prior_jack=prior_jack,
+                        prior_neo=prior_neo,
                         latest_peer=str(robin_path.resolve()),
                     ),
                     timeout_sec=900,
                     validate=_artifact_validator(
-                        jack_path,
+                        neo_path,
                         [
                             "artifact",
                             "round",
@@ -511,18 +511,18 @@ def run_plan(
                             "open_attacks",
                         ],
                     ),
-                    persona_name="jack",
-                    artifact_contract=_jack_artifact_contract(round_num),
+                    persona_name="neo",
+                    artifact_contract=_neo_artifact_contract(round_num),
                 )
             render_artifact_summary(
-                jack_path,
-                persona="jack",
+                neo_path,
+                persona="neo",
                 elapsed_sec=spinner.elapsed_sec,
-                runtime_tag=jack_tag,
+                runtime_tag=neo_tag,
             )
         else:
-            jack_meta = validate_artifact(
-                jack_path,
+            neo_meta = validate_artifact(
+                neo_path,
                 ["artifact", "round", "status", "addresses", "created_at", "open_attacks"],
             )
 
@@ -530,8 +530,8 @@ def run_plan(
             "n": round_num,
             "robin_path": _relative(robin_path, project_root),
             "robin_status": robin_meta["status"],
-            "jack_path": _relative(jack_path, project_root),
-            "jack_status": jack_meta["status"],
+            "neo_path": _relative(neo_path, project_root),
+            "neo_status": neo_meta["status"],
         }
         rounds.append(round_item)
         state = transition(
@@ -546,8 +546,8 @@ def run_plan(
                 }
             },
         )
-        robin_status, jack_status = _status_pair(round_item)
-        if robin_status == "converged" and jack_status == "converged":
+        robin_status, neo_status = _status_pair(round_item)
+        if robin_status == "converged" and neo_status == "converged":
             converged = True
             break
 
@@ -567,7 +567,7 @@ def run_plan(
                     for i in range(1, len(rounds) + 1)
                 ],
                 *[
-                    Path(_relative(plan_dir / f"jack_r{i}.md", project_root))
+                    Path(_relative(plan_dir / f"neo_r{i}.md", project_root))
                     for i in range(1, len(rounds) + 1)
                 ],
             ],
@@ -584,8 +584,8 @@ def run_plan(
             prior_robin=[
                 str((plan_dir / f"robin_r{i}.md").resolve()) for i in range(1, rounds_used + 1)
             ],
-            prior_jack=[
-                str((plan_dir / f"jack_r{i}.md").resolve()) for i in range(1, rounds_used + 1)
+            prior_neo=[
+                str((plan_dir / f"neo_r{i}.md").resolve()) for i in range(1, rounds_used + 1)
             ],
             output_path=str(final_plan.resolve()),
         )
@@ -604,8 +604,8 @@ def run_plan(
                         str((plan_dir / f"robin_r{i}.md").resolve())
                         for i in range(1, rounds_used + 1)
                     ],
-                    prior_jack=[
-                        str((plan_dir / f"jack_r{i}.md").resolve())
+                    prior_neo=[
+                        str((plan_dir / f"neo_r{i}.md").resolve())
                         for i in range(1, rounds_used + 1)
                     ],
                 ),

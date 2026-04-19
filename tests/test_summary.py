@@ -20,7 +20,7 @@ def test_build_summary_view_for_exhausted_stop(tmp_path: Path) -> None:
                 "last_max_rounds": 5,
                 "rounds": [
                     {
-                        "ruby_path": ".take_root/code/ruby_r5.md",
+                        "lucy_path": ".take_root/code/lucy_r5.md",
                         "peter_path": ".take_root/code/peter_r5.md",
                     }
                 ],
@@ -36,7 +36,7 @@ def test_build_summary_view_for_exhausted_stop(tmp_path: Path) -> None:
     assert view["next_action"] == "take-root code --max-rounds 6"
     assert view["key_artifacts"] == [
         ".take_root/plan/final_plan.md",
-        ".take_root/code/ruby_r5.md",
+        ".take_root/code/lucy_r5.md",
         ".take_root/code/peter_r5.md",
     ]
     assert any("advance" in item for item in view["follow_ups"])

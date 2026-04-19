@@ -87,11 +87,11 @@ def build_parser() -> argparse.ArgumentParser:
     plan_parser.add_argument(
         "--no-brainstorm", action="store_true", help="提示 Jeff 跳过 brainstorm"
     )
-    plan_parser.add_argument("--max-rounds", type=int, default=5, help="Robin/Jack 最大轮数")
+    plan_parser.add_argument("--max-rounds", type=int, default=5, help="Robin/Neo 最大轮数")
 
     code_parser = subparsers.add_parser("code", help="执行编码阶段")
     code_parser.add_argument("--plan", type=Path, default=None, help="final_plan.md 路径")
-    code_parser.add_argument("--max-rounds", type=int, default=5, help="Ruby/Peter 最大轮数")
+    code_parser.add_argument("--max-rounds", type=int, default=5, help="Lucy/Peter 最大轮数")
     code_parser.add_argument(
         "--vcs",
         choices=["git", "snapshot", "off", "auto"],
@@ -189,17 +189,17 @@ def _cmd_logs(project_root: Path, phase: str | None, round_num: int | None) -> i
         if phase == "plan":
             targets = [
                 project_root / ".take_root" / "plan" / f"robin_r{round_num}.md",
-                project_root / ".take_root" / "plan" / f"jack_r{round_num}.md",
+                project_root / ".take_root" / "plan" / f"neo_r{round_num}.md",
             ]
         elif phase == "code":
             targets = [
-                project_root / ".take_root" / "code" / f"ruby_r{round_num}.md",
+                project_root / ".take_root" / "code" / f"lucy_r{round_num}.md",
                 project_root / ".take_root" / "code" / f"peter_r{round_num}.md",
             ]
         else:
             targets = [
                 project_root / ".take_root" / "test" / f"amy_r{round_num}.md",
-                project_root / ".take_root" / "test" / f"ruby_fix_r{round_num}.md",
+                project_root / ".take_root" / "test" / f"lucy_fix_r{round_num}.md",
             ]
         for path in targets:
             if path.exists():

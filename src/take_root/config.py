@@ -14,7 +14,7 @@ CONFIG_SCHEMA_VERSION = 1
 MODEL_ALIASES = ("opus", "sonnet", "haiku")
 VALID_PROVIDER_KINDS = {"claude_official", "codex_official", "anthropic_compatible"}
 VALID_EFFORTS = {"minimal", "low", "medium", "high"}
-PERSONA_NAMES = ("jeff", "robin", "jack", "ruby", "peter", "amy")
+PERSONA_NAMES = ("jeff", "robin", "neo", "lucy", "peter", "amy")
 ANTHROPIC_ENV_KEYS = (
     "ANTHROPIC_BASE_URL",
     "ANTHROPIC_AUTH_TOKEN",
@@ -118,8 +118,8 @@ def default_take_root_config() -> TakeRootConfig:
     personas = {
         "jeff": ActorRouteConfig(provider="qwen", model="sonnet", effort="medium"),
         "robin": ActorRouteConfig(provider="qwen", model="opus", effort="high"),
-        "jack": ActorRouteConfig(provider="kimi", model="sonnet", effort="high"),
-        "ruby": ActorRouteConfig(provider="codex_official", model="opus", effort="high"),
+        "neo": ActorRouteConfig(provider="kimi", model="sonnet", effort="high"),
+        "lucy": ActorRouteConfig(provider="codex_official", model="opus", effort="high"),
         "peter": ActorRouteConfig(provider="codex_official", model="opus", effort="high"),
         "amy": ActorRouteConfig(provider="codex_official", model="sonnet", effort="medium"),
     }

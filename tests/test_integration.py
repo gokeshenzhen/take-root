@@ -113,18 +113,18 @@ def test_plan_phase_with_mocked_runtimes(monkeypatch: pytest.MonkeyPatch, tmp_pa
                     ),
                     encoding="utf-8",
                 )
-            elif output_path.name.startswith("jack_r"):
+            elif output_path.name.startswith("neo_r"):
                 output_path.write_text(
                     (
                         "---\n"
-                        "artifact: jack_review\n"
+                        "artifact: neo_review\n"
                         "round: 1\n"
                         "status: converged\n"
                         "addresses: robin_r1.md\n"
                         "created_at: 2026-04-14T00:00:00Z\n"
                         "open_attacks: 0\n"
                         "---\n"
-                        "# Jack — Round 1 Adversarial Review\n\n"
+                        "# Neo — Round 1 Adversarial Review\n\n"
                         "## 2. 新攻击点\n"
                         "### J1.1 [MINOR] x\n"
                         "- **攻击对象**: robin_r1.md § 1\n\n"

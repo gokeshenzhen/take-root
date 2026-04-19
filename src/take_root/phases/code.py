@@ -77,16 +77,16 @@ def _review_range(
 
 
 def _resolved_vcs_metadata(
-    ruby_meta: dict[str, Any], vcs_result: dict[str, str | None]
+    lucy_meta: dict[str, Any], vcs_result: dict[str, str | None]
 ) -> dict[str, str | None]:
     commit_sha = vcs_result.get("commit_sha")
     snapshot_dir = vcs_result.get("snapshot_dir")
     if commit_sha is None:
-        raw_commit_sha = ruby_meta.get("commit_sha")
+        raw_commit_sha = lucy_meta.get("commit_sha")
         if isinstance(raw_commit_sha, str) and raw_commit_sha.strip() and raw_commit_sha != "null":
             commit_sha = raw_commit_sha
     if snapshot_dir is None:
-        raw_snapshot_dir = ruby_meta.get("snapshot_dir")
+        raw_snapshot_dir = lucy_meta.get("snapshot_dir")
         if (
             isinstance(raw_snapshot_dir, str)
             and raw_snapshot_dir.strip()
@@ -103,7 +103,7 @@ def _resume_code_rounds(
     for index, item in enumerate(rounds, start=1):
         if int(item.get("n", index)) != index:
             return index, completed_rounds
-        if "ruby_path" not in item:
+        if "lucy_path" not in item:
             return index, completed_rounds
         if "peter_path" not in item:
             return index, completed_rounds
@@ -185,9 +185,9 @@ def run_code(
         raise ConfigError("请先完成 plan 阶段")
 
     harness_root = find_harness_root()
-    ruby = load_persona("ruby", project_root, harness_root=harness_root)
+    lucy = load_persona("lucy", project_root, harness_root=harness_root)
     peter = load_persona("peter", project_root, harness_root=harness_root)
-    for persona in (ruby, peter):
+    for persona in (lucy, peter):
         _check_runtime_available(resolve_persona_runtime_config(config, persona.name).runtime_name)
 
     final_plan = (
@@ -212,10 +212,10 @@ def run_code(
 
     start_round, rounds = _resume_code_rounds(existing_rounds)
     for round_num in range(start_round, max_rounds + 1):
-        ruby_path = artifact_path(project_root, "code", f"ruby_r{round_num}.md")
+        lucy_path = artifact_path(project_root, "code", f"lucy_r{round_num}.md")
         peter_path = artifact_path(project_root, "code", f"peter_r{round_num}.md")
-        prior_ruby = [
-            str((project_root / ".take_root" / "code" / f"ruby_r{i}.md").resolve())
+        prior_lucy = [
+            str((project_root / ".take_root" / "code" / f"lucy_r{i}.md").resolve())
             for i in range(1, round_num)
         ]
         prior_peter = [
@@ -228,36 +228,36 @@ def run_code(
             else None
         )
         vcs_handler.pre_round(round_num)
-        ruby_elapsed_sec: float | None = None
-        ruby_tag = ""
+        lucy_elapsed_sec: float | None = None
+        lucy_tag = ""
 
-        if not ruby_path.exists():
-            ruby_resolved = resolve_persona_runtime_config(config, ruby.name)
-            ruby_tag = build_runtime_tag(ruby_resolved)
+        if not lucy_path.exists():
+            lucy_resolved = resolve_persona_runtime_config(config, lucy.name)
+            lucy_tag = build_runtime_tag(lucy_resolved)
             announce_persona_call(
                 phase="code",
                 round_num=round_num,
-                persona="ruby",
+                persona="lucy",
                 action="实现中",
                 inputs=[
                     Path(_relative(final_plan, project_root)),
-                    *[Path(_relative(Path(path), project_root)) for path in prior_ruby],
+                    *[Path(_relative(Path(path), project_root)) for path in prior_lucy],
                     *[Path(_relative(Path(path), project_root)) for path in prior_peter],
                 ],
-                output=Path(_relative(ruby_path, project_root)),
-                runtime_tag=ruby_tag,
+                output=Path(_relative(lucy_path, project_root)),
+                runtime_tag=lucy_tag,
             )
-            ruby_runtime = _runtime_for(ruby, project_root, config)
-            ruby_boot = format_boot_message(
-                "ruby",
+            lucy_runtime = _runtime_for(lucy, project_root, config)
+            lucy_boot = format_boot_message(
+                "lucy",
                 mode="implement",
                 round=round_num,
                 project_root=str(project_root.resolve()),
                 final_plan=str(final_plan.resolve()),
-                prior_ruby=prior_ruby,
+                prior_lucy=prior_lucy,
                 prior_peter=prior_peter,
                 latest_peter=latest_peter,
-                output_path=str(ruby_path.resolve()),
+                output_path=str(lucy_path.resolve()),
                 vcs_mode=mode_name,
                 vcs_commit_prefix=f"[take-root code r{round_num}]",
                 vcs_snapshot_dir=(
@@ -267,22 +267,22 @@ def run_code(
                 ),
             )
             LOGGER.debug(
-                "ruby call: round=%d output_path=%s latest_peter=%s "
-                "prior_ruby=%d prior_peter=%d vcs_mode=%s",
+                "lucy call: round=%d output_path=%s latest_peter=%s "
+                "prior_lucy=%d prior_peter=%d vcs_mode=%s",
                 round_num,
-                ruby_path,
+                lucy_path,
                 latest_peter,
-                len(prior_ruby),
+                len(prior_lucy),
                 len(prior_peter),
                 mode_name,
             )
-            with Spinner(f"[code r{round_num}] Ruby 实现中") as spinner:
-                ruby_runtime.call_noninteractive(ruby_boot, cwd=project_root, timeout_sec=1800)
-            ruby_elapsed_sec = spinner.elapsed_sec
+            with Spinner(f"[code r{round_num}] Lucy 实现中") as spinner:
+                lucy_runtime.call_noninteractive(lucy_boot, cwd=project_root, timeout_sec=1800)
+            lucy_elapsed_sec = spinner.elapsed_sec
         else:
-            ruby_elapsed_sec = None
-        ruby_meta = validate_artifact(
-            ruby_path,
+            lucy_elapsed_sec = None
+        lucy_meta = validate_artifact(
+            lucy_path,
             [
                 "artifact",
                 "round",
@@ -296,25 +296,25 @@ def run_code(
                 "open_pushbacks",
             ],
         )
-        if ruby_elapsed_sec is not None:
+        if lucy_elapsed_sec is not None:
             render_artifact_summary(
-                ruby_path,
-                persona="ruby",
-                elapsed_sec=ruby_elapsed_sec,
-                runtime_tag=ruby_tag,
+                lucy_path,
+                persona="lucy",
+                elapsed_sec=lucy_elapsed_sec,
+                runtime_tag=lucy_tag,
             )
-        files_changed = _normalize_files_changed(ruby_meta.get("files_changed"))
+        files_changed = _normalize_files_changed(lucy_meta.get("files_changed"))
         vcs_result = vcs_handler.post_round(
             round_num=round_num,
             files_changed=files_changed,
-            summary=f"ruby round {round_num}",
+            summary=f"lucy round {round_num}",
             prefix=f"[take-root code r{round_num}]",
         )
-        vcs_metadata = _resolved_vcs_metadata(ruby_meta, vcs_result)
+        vcs_metadata = _resolved_vcs_metadata(lucy_meta, vcs_result)
         current_round: dict[str, Any] = {
             "n": round_num,
-            "ruby_path": _relative(ruby_path, project_root),
-            "ruby_status": ruby_meta["status"],
+            "lucy_path": _relative(lucy_path, project_root),
+            "lucy_status": lucy_meta["status"],
             "commit_sha": vcs_metadata["commit_sha"],
             "snapshot_dir": vcs_metadata["snapshot_dir"],
         }
@@ -330,9 +330,9 @@ def run_code(
                 action="评审中",
                 inputs=[
                     Path(_relative(final_plan, project_root)),
-                    *[Path(_relative(Path(path), project_root)) for path in prior_ruby],
+                    *[Path(_relative(Path(path), project_root)) for path in prior_lucy],
                     *[Path(_relative(Path(path), project_root)) for path in prior_peter],
-                    Path(_relative(ruby_path, project_root)),
+                    Path(_relative(lucy_path, project_root)),
                 ],
                 output=Path(_relative(peter_path, project_root)),
                 runtime_tag=peter_tag,
@@ -345,8 +345,8 @@ def run_code(
                 "project_root": str(project_root.resolve()),
                 "final_plan": str(final_plan.resolve()),
                 "prior_peter": prior_peter,
-                "prior_ruby": [*prior_ruby, str(ruby_path.resolve())],
-                "latest_ruby": str(ruby_path.resolve()),
+                "prior_lucy": [*prior_lucy, str(lucy_path.resolve())],
+                "latest_lucy": str(lucy_path.resolve()),
                 "vcs_mode": mode_name,
                 "output_path": str(peter_path.resolve()),
             }
@@ -359,12 +359,12 @@ def run_code(
                 }
             peter_boot = format_boot_message("peter", **peter_boot_kwargs)
             LOGGER.debug(
-                "peter call: round=%d output_path=%s latest_ruby=%s "
-                "prior_ruby=%d prior_peter=%d vcs_mode=%s review_range=%s",
+                "peter call: round=%d output_path=%s latest_lucy=%s "
+                "prior_lucy=%d prior_peter=%d vcs_mode=%s review_range=%s",
                 round_num,
                 peter_path,
-                ruby_path,
-                len(prior_ruby) + 1,
+                lucy_path,
+                len(prior_lucy) + 1,
                 len(prior_peter),
                 mode_name,
                 review_range,
@@ -429,14 +429,14 @@ def run_code(
             },
         )
         if (
-            current_round["ruby_status"] == "converged"
+            current_round["lucy_status"] == "converged"
             and current_round["peter_status"] == "converged"
         ):
             break
 
     converged = (
         bool(rounds)
-        and rounds[-1]["ruby_status"] == "converged"
+        and rounds[-1]["lucy_status"] == "converged"
         and rounds[-1]["peter_status"] == "converged"
     )
     result = "converged"

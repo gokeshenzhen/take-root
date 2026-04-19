@@ -58,14 +58,14 @@ def _write_jeff(path: Path) -> None:
 def _write_robin(path: Path, round_num: int, *, status: str = "converged") -> None:
     response = ""
     if round_num > 1:
-        response = "## 1. 对 Jack 的回应\n### J1.1: 回应\n- **立场**: 同意\n\n"
+        response = "## 1. 对 Neo 的回应\n### J1.1: 回应\n- **立场**: 同意\n\n"
     path.write_text(
         (
             "---\n"
             "artifact: robin_review\n"
             f"round: {round_num}\n"
             f"status: {status}\n"
-            f"addresses: {'jack_r1.md' if round_num > 1 else 'jeff_proposal.md'}\n"
+            f"addresses: {'neo_r1.md' if round_num > 1 else 'jeff_proposal.md'}\n"
             "created_at: 2026-04-16T00:00:00Z\n"
             f"remaining_concerns: {0 if status == 'converged' else 1}\n"
             "---\n"
@@ -81,7 +81,7 @@ def _write_robin(path: Path, round_num: int, *, status: str = "converged") -> No
     )
 
 
-def _write_jack(
+def _write_neo(
     path: Path,
     round_num: int,
     *,
@@ -100,14 +100,14 @@ def _write_jack(
     path.write_text(
         (
             "---\n"
-            "artifact: jack_review\n"
+            "artifact: neo_review\n"
             f"round: {round_num}\n"
             f"status: {status}\n"
             f"addresses: robin_r{round_num}.md\n"
             "created_at: 2026-04-16T00:00:00Z\n"
             f"open_attacks: {0 if status == 'converged' else 1}\n"
             "---\n"
-            f"# Jack — Round {round_num} Adversarial Review\n\n"
+            f"# Neo — Round {round_num} Adversarial Review\n\n"
             f"{disposition}"
             "## 2. 新攻击点\n"
             "### J1.1 [MINOR] clar\n"
@@ -243,7 +243,7 @@ class _FakeRuntime:
                         "artifact: robin_review\n"
                         f"round: {round_num}\n"
                         "status: converged\n"
-                        f"addresses: {'jack_r1.md' if round_num > 1 else 'jeff_proposal.md'}\n"
+                        f"addresses: {'neo_r1.md' if round_num > 1 else 'jeff_proposal.md'}\n"
                         "created_at: 2026-04-16T00:00:00Z\n"
                         "remaining_concerns: 0\n"
                         "---\n"
@@ -254,7 +254,7 @@ class _FakeRuntime:
                 )
             else:
                 _write_robin(output_path, round_num=round_num)
-        elif output_path.name.startswith("jack_r"):
+        elif output_path.name.startswith("neo_r"):
             round_num = _round_num_from_output_path(output_path)
             if (
                 self.persona_name == self.retry_invalid_actor
@@ -262,13 +262,13 @@ class _FakeRuntime:
                 and not self.retry_invalid_emitted
             ):
                 self.retry_invalid_emitted = True
-                _write_jack(
+                _write_neo(
                     output_path,
                     round_num=round_num,
                     include_round_response=False,
                 )
             else:
-                _write_jack(output_path, round_num=round_num)
+                _write_neo(output_path, round_num=round_num)
         else:
             _write_final_plan(output_path)
         if self.persona_name == self.late_error_actor:
@@ -290,15 +290,15 @@ def test_run_plan_applies_review_only_policy(
     state = run_plan(tmp_path, max_rounds=2)
 
     assert state["phases"]["plan"]["status"] == "done"
-    assert [call["persona"] for call in calls] == ["robin", "jack", "robin"]
+    assert [call["persona"] for call in calls] == ["robin", "neo", "robin"]
     assert all(call["policy"] is not None for call in calls)
     assert all(call["policy"].mode == "review_only" for call in calls)
     assert calls[0]["policy"].output_path == tmp_path / ".take_root" / "plan" / "robin_r1.md"
-    assert calls[1]["policy"].output_path == tmp_path / ".take_root" / "plan" / "jack_r1.md"
+    assert calls[1]["policy"].output_path == tmp_path / ".take_root" / "plan" / "neo_r1.md"
     assert calls[2]["policy"].output_path == tmp_path / ".take_root" / "plan" / "final_plan.md"
 
 
-@pytest.mark.parametrize("actor", ["robin", "jack"])
+@pytest.mark.parametrize("actor", ["robin", "neo"])
 def test_run_plan_rejects_extra_file_changes(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -329,7 +329,7 @@ def test_run_plan_rejects_extra_file_changes(
     else:
         assert state["phases"]["plan"]["rounds"] == []
         assert (tmp_path / ".take_root" / "plan" / "robin_r1.md").exists()
-        assert not (tmp_path / ".take_root" / "plan" / "jack_r1.md").exists()
+        assert not (tmp_path / ".take_root" / "plan" / "neo_r1.md").exists()
 
 
 def test_run_plan_ignores_doctor_artifacts_during_review_only(
@@ -369,21 +369,21 @@ def test_run_plan_prints_rich_phase_output(
     captured = capsys.readouterr()
     assert "[plan r1] Robin 评审中" in captured.err
     assert "robin_r1  status=converged  concerns=0" in captured.err
-    assert "jack_r1  status=converged  attacks=0" in captured.err
+    assert "neo_r1  status=converged  attacks=0" in captured.err
     assert "final_plan  rounds=1  converged=True" in captured.err
 
 
-def test_run_plan_retries_invalid_jack_round_artifact_once(
+def test_run_plan_retries_invalid_neo_round_artifact_once(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _prepare_plan_project(monkeypatch, tmp_path)
     plan_dir = tmp_path / ".take_root" / "plan"
     _write_jeff(plan_dir / "jeff_proposal.md")
     _write_robin(plan_dir / "robin_r1.md", round_num=1, status="ongoing")
-    _write_jack(plan_dir / "jack_r1.md", round_num=1, status="ongoing")
+    _write_neo(plan_dir / "neo_r1.md", round_num=1, status="ongoing")
 
     calls: list[dict[str, Any]] = []
-    harness = _RuntimeHarness(recorder=calls, retry_invalid_actor="jack")
+    harness = _RuntimeHarness(recorder=calls, retry_invalid_actor="neo")
     monkeypatch.setattr(
         "take_root.phases.plan._runtime_for",
         lambda persona, project_root, config: harness.build(persona.name),
@@ -392,9 +392,9 @@ def test_run_plan_retries_invalid_jack_round_artifact_once(
     state = run_plan(tmp_path, max_rounds=2)
 
     assert state["phases"]["plan"]["status"] == "done"
-    assert (plan_dir / "jack_r2.md").exists()
-    jack_r2_calls = [call for call in calls if call["output_path"] == plan_dir / "jack_r2.md"]
-    assert len(jack_r2_calls) == 2
+    assert (plan_dir / "neo_r2.md").exists()
+    neo_r2_calls = [call for call in calls if call["output_path"] == plan_dir / "neo_r2.md"]
+    assert len(neo_r2_calls) == 2
     stderr = capsys.readouterr().err
     assert "produced an invalid artifact on attempt 1" in stderr
 
@@ -475,29 +475,29 @@ def test_run_plan_restarts_from_r1_after_stale_state_is_reconciled(
                             "n": 1,
                             "robin_path": ".take_root/plan/robin_r1.md",
                             "robin_status": "ongoing",
-                            "jack_path": ".take_root/plan/jack_r1.md",
-                            "jack_status": "ongoing",
+                            "neo_path": ".take_root/plan/neo_r1.md",
+                            "neo_status": "ongoing",
                         },
                         {
                             "n": 2,
                             "robin_path": ".take_root/plan/robin_r2.md",
                             "robin_status": "ongoing",
-                            "jack_path": ".take_root/plan/jack_r2.md",
-                            "jack_status": "ongoing",
+                            "neo_path": ".take_root/plan/neo_r2.md",
+                            "neo_status": "ongoing",
                         },
                         {
                             "n": 3,
                             "robin_path": ".take_root/plan/robin_r3.md",
                             "robin_status": "ongoing",
-                            "jack_path": ".take_root/plan/jack_r3.md",
-                            "jack_status": "ongoing",
+                            "neo_path": ".take_root/plan/neo_r3.md",
+                            "neo_status": "ongoing",
                         },
                         {
                             "n": 4,
                             "robin_path": ".take_root/plan/robin_r4.md",
                             "robin_status": "ongoing",
-                            "jack_path": ".take_root/plan/jack_r4.md",
-                            "jack_status": "ongoing",
+                            "neo_path": ".take_root/plan/neo_r4.md",
+                            "neo_status": "ongoing",
                         },
                     ],
                 }
@@ -514,17 +514,17 @@ def test_run_plan_restarts_from_r1_after_stale_state_is_reconciled(
     run_plan(tmp_path, max_rounds=2)
 
     assert calls[0]["output_path"] == tmp_path / ".take_root" / "plan" / "robin_r1.md"
-    assert calls[1]["output_path"] == tmp_path / ".take_root" / "plan" / "jack_r1.md"
+    assert calls[1]["output_path"] == tmp_path / ".take_root" / "plan" / "neo_r1.md"
 
 
-def test_run_plan_resumes_incomplete_round_from_missing_jack_artifact(
+def test_run_plan_resumes_incomplete_round_from_missing_neo_artifact(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _prepare_plan_project(monkeypatch, tmp_path)
     plan_dir = tmp_path / ".take_root" / "plan"
     _write_jeff(plan_dir / "jeff_proposal.md")
     _write_robin(plan_dir / "robin_r1.md", round_num=1, status="ongoing")
-    _write_jack(plan_dir / "jack_r1.md", round_num=1, status="ongoing")
+    _write_neo(plan_dir / "neo_r1.md", round_num=1, status="ongoing")
     _write_robin(plan_dir / "robin_r2.md", round_num=2, status="ongoing")
 
     calls: list[dict[str, Any]] = []
@@ -536,4 +536,4 @@ def test_run_plan_resumes_incomplete_round_from_missing_jack_artifact(
 
     run_plan(tmp_path, max_rounds=3)
 
-    assert calls[0]["output_path"] == plan_dir / "jack_r2.md"
+    assert calls[0]["output_path"] == plan_dir / "neo_r2.md"

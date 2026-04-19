@@ -1,6 +1,6 @@
 # take-root
 
-`take-root` 是一个 Python CLI harness，用 6 个 persona（Jeff/Robin/Jack/Ruby/Peter/Amy）把想法推进到计划、实现和测试闭环。
+`take-root` 是一个 Python CLI harness，用 6 个 persona（Jeff/Robin/Neo/Lucy/Peter/Amy）把想法推进到计划、实现和测试闭环。
 
 ## 安装
 
@@ -56,14 +56,14 @@ take-root status
 | plan                          | <-------+ 若 current_phase=plan   |
 | Jeff 交互提案                 |         +-------------------------+
 |   -> Robin review-only        |
-|   -> Jack review-only         |
+|   -> Neo review-only         |
 |   -> Robin 输出 final_plan.md |
 +---------+---------------------+
           |
           v
 +-------------------------------+         +-------------------------+
 | code                          | <-------+ 若 current_phase=code   |
-| Ruby 实现                     |         +-------------------------+
+| Lucy 实现                     |         +-------------------------+
 |   -> Peter review-only        |
 | 循环直到 converged 或耗尽预算 |
 +---------+---------------------+
@@ -81,7 +81,7 @@ take-root status
 | test                          | <-------+ 若 current_phase=test   |
 | Amy 全量测试                  |         +-------------------------+
 |   -> all_pass: done           |
-|   -> fail: Ruby 修复后重测    |
+|   -> fail: Lucy 修复后重测    |
 +---------+---------------------+
           |
           v
@@ -94,7 +94,7 @@ take-root status
 补充说明：
 
 - `run` 会在 `init` 未完成时自动先跑 `init`，但不会自动补跑 `configure`。
-- `plan` 的 Jeff 是交互式；Robin 和 Jack 是非交互、review-only。
+- `plan` 的 Jeff 是交互式；Robin 和 Neo 是非交互、review-only。
 - `code` 默认在预算耗尽时停在 `code`；只有显式传 `--on-code-exhausted advance` 才会进入 `test`。
 - `resume` 不读取你上次传入的 CLI 调参，而是按内置默认值继续当前 phase。
 
@@ -143,8 +143,8 @@ take-root status
        |                             | init  : 项目侦察, 生成 CLAUDE.md       |
        |                             | Jeff  : 交互式提案                     |
        |                             | Robin : review/finalize                |
-       |                             | Jack  : adversarial review             |
-       |                             | Ruby  : implement / fix                |
+       |                             | Neo  : adversarial review             |
+       |                             | Lucy  : implement / fix                |
        |                             | Peter : code review                    |
        |                             | Amy   : full test                      |
        |                             +----------------+-----------------------+
@@ -175,7 +175,7 @@ take-root status
 补充说明：
 
 - CLI 只是入口，真正编排发生在各 `phases/*.py`。
-- `plan` 阶段的 Robin / Jack 通过 review-only policy 被限制只能写各自 artifact。
+- `plan` 阶段的 Robin / Neo 通过 review-only policy 被限制只能写各自 artifact。
 - 所有阶段都以磁盘工件和 `state.json` 为恢复依据，而不是依赖会话记忆。
 - `run_summary.md`、`status`、`resume` 都是围绕同一份状态模型工作的。
 

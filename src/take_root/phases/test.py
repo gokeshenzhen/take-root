@@ -44,11 +44,11 @@ def _relative(path: Path, project_root: Path) -> str:
     return str(path.resolve().relative_to(project_root.resolve()))
 
 
-def _find_last_ruby_impl(project_root: Path) -> Path:
+def _find_last_lucy_impl(project_root: Path) -> Path:
     code_dir = project_root / ".take_root" / "code"
-    rounds = sorted(code_dir.glob("ruby_r*.md"))
+    rounds = sorted(code_dir.glob("lucy_r*.md"))
     if not rounds:
-        raise ConfigError("未找到 ruby_r*.md，无法进入 test 阶段")
+        raise ConfigError("未找到 lucy_r*.md，无法进入 test 阶段")
     return rounds[-1]
 
 
@@ -90,8 +90,8 @@ def run_test(
 
     harness_root = find_harness_root()
     amy = load_persona("amy", project_root, harness_root=harness_root)
-    ruby = load_persona("ruby", project_root, harness_root=harness_root)
-    for persona in (amy, ruby):
+    lucy = load_persona("lucy", project_root, harness_root=harness_root)
+    for persona in (amy, lucy):
         _check_runtime_available(resolve_persona_runtime_config(config, persona.name).runtime_name)
 
     final_plan = project_root / ".take_root" / "plan" / "final_plan.md"
@@ -101,22 +101,22 @@ def run_test(
     test_state = state["phases"]["test"]
     iterations: list[dict[str, Any]] = list(test_state.get("iterations", []))
     vcs_mode = str(state["phases"]["code"].get("vcs_mode") or "off")
-    last_ruby_impl = _find_last_ruby_impl(project_root)
+    last_lucy_impl = _find_last_lucy_impl(project_root)
 
     for iteration in range(len(iterations) + 1, max_iterations + 1):
         amy_path = artifact_path(project_root, "test", f"amy_r{iteration}.md")
-        ruby_fix_path = artifact_path(project_root, "test", f"ruby_fix_r{iteration}.md")
+        lucy_fix_path = artifact_path(project_root, "test", f"lucy_fix_r{iteration}.md")
 
         prior_amy = [
             str((project_root / ".take_root" / "test" / f"amy_r{i}.md").resolve())
             for i in range(1, iteration)
         ]
-        prior_ruby_fix = [
-            str((project_root / ".take_root" / "test" / f"ruby_fix_r{i}.md").resolve())
+        prior_lucy_fix = [
+            str((project_root / ".take_root" / "test" / f"lucy_fix_r{i}.md").resolve())
             for i in range(1, iteration)
         ]
-        latest_ruby_fix = (
-            str((project_root / ".take_root" / "test" / f"ruby_fix_r{iteration - 1}.md").resolve())
+        latest_lucy_fix = (
+            str((project_root / ".take_root" / "test" / f"lucy_fix_r{iteration - 1}.md").resolve())
             if iteration > 1
             else None
         )
@@ -133,9 +133,9 @@ def run_test(
                 action="全量测试中",
                 inputs=[
                     Path(_relative(final_plan, project_root)),
-                    Path(_relative(last_ruby_impl, project_root)),
+                    Path(_relative(last_lucy_impl, project_root)),
                     *[Path(_relative(Path(path), project_root)) for path in prior_amy],
-                    *[Path(_relative(Path(path), project_root)) for path in prior_ruby_fix],
+                    *[Path(_relative(Path(path), project_root)) for path in prior_lucy_fix],
                 ],
                 output=Path(_relative(amy_path, project_root)),
                 runtime_tag=amy_tag,
@@ -148,9 +148,9 @@ def run_test(
                 project_root=str(project_root.resolve()),
                 final_plan=str(final_plan.resolve()),
                 prior_amy=prior_amy,
-                prior_ruby_fix=prior_ruby_fix,
-                latest_ruby_fix=latest_ruby_fix,
-                last_ruby_impl=str(last_ruby_impl.resolve()),
+                prior_lucy_fix=prior_lucy_fix,
+                latest_lucy_fix=latest_lucy_fix,
+                last_lucy_impl=str(last_lucy_impl.resolve()),
                 output_path=str(amy_path.resolve()),
                 max_iterations=max_iterations,
                 vcs_mode=vcs_mode,
@@ -205,40 +205,40 @@ def run_test(
             _print_test_result_summary(iteration, amy_meta)
             return state
 
-        ruby_elapsed_sec: float | None = None
-        ruby_tag = ""
-        if not ruby_fix_path.exists():
-            ruby_resolved = resolve_persona_runtime_config(config, ruby.name)
-            ruby_tag = build_runtime_tag(ruby_resolved)
+        lucy_elapsed_sec: float | None = None
+        lucy_tag = ""
+        if not lucy_fix_path.exists():
+            lucy_resolved = resolve_persona_runtime_config(config, lucy.name)
+            lucy_tag = build_runtime_tag(lucy_resolved)
             announce_persona_call(
                 phase="test",
                 round_num=iteration,
-                persona="ruby",
+                persona="lucy",
                 action="修复中",
                 inputs=[
                     Path(_relative(final_plan, project_root)),
-                    Path(_relative(last_ruby_impl, project_root)),
-                    *[Path(_relative(Path(path), project_root)) for path in prior_ruby_fix],
+                    Path(_relative(last_lucy_impl, project_root)),
+                    *[Path(_relative(Path(path), project_root)) for path in prior_lucy_fix],
                     *[
                         Path(_relative(Path(path), project_root))
                         for path in [*prior_amy, str(amy_path.resolve())]
                     ],
                 ],
-                output=Path(_relative(ruby_fix_path, project_root)),
-                runtime_tag=ruby_tag,
+                output=Path(_relative(lucy_fix_path, project_root)),
+                runtime_tag=lucy_tag,
             )
-            ruby_runtime = _runtime_for(ruby, project_root, config)
-            ruby_boot = format_boot_message(
-                "ruby",
+            lucy_runtime = _runtime_for(lucy, project_root, config)
+            lucy_boot = format_boot_message(
+                "lucy",
                 mode="fix",
                 iteration=iteration,
                 project_root=str(project_root.resolve()),
                 final_plan=str(final_plan.resolve()),
-                last_ruby_impl=str(last_ruby_impl.resolve()),
-                prior_ruby_fix=prior_ruby_fix,
+                last_lucy_impl=str(last_lucy_impl.resolve()),
+                prior_lucy_fix=prior_lucy_fix,
                 prior_amy=[*prior_amy, str(amy_path.resolve())],
                 latest_amy=str(amy_path.resolve()),
-                output_path=str(ruby_fix_path.resolve()),
+                output_path=str(lucy_fix_path.resolve()),
                 vcs_mode=vcs_mode,
                 vcs_commit_prefix=f"[take-root fix r{iteration}]",
                 vcs_snapshot_dir=(
@@ -247,13 +247,13 @@ def run_test(
                     else None
                 ),
             )
-            with Spinner(f"[test it{iteration}] Ruby 修复中") as spinner:
-                ruby_runtime.call_noninteractive(ruby_boot, cwd=project_root, timeout_sec=1800)
-            ruby_elapsed_sec = spinner.elapsed_sec
+            with Spinner(f"[test it{iteration}] Lucy 修复中") as spinner:
+                lucy_runtime.call_noninteractive(lucy_boot, cwd=project_root, timeout_sec=1800)
+            lucy_elapsed_sec = spinner.elapsed_sec
         else:
-            ruby_elapsed_sec = None
-        ruby_meta = validate_artifact(
-            ruby_fix_path,
+            lucy_elapsed_sec = None
+        lucy_meta = validate_artifact(
+            lucy_fix_path,
             [
                 "artifact",
                 "iteration",
@@ -267,16 +267,16 @@ def run_test(
                 "created_at",
             ],
         )
-        if ruby_elapsed_sec is not None:
+        if lucy_elapsed_sec is not None:
             render_artifact_summary(
-                ruby_fix_path,
-                persona="ruby",
-                elapsed_sec=ruby_elapsed_sec,
-                runtime_tag=ruby_tag,
+                lucy_fix_path,
+                persona="lucy",
+                elapsed_sec=lucy_elapsed_sec,
+                runtime_tag=lucy_tag,
             )
-        item["ruby_fix_path"] = _relative(ruby_fix_path, project_root)
-        item["failures_addressed"] = ruby_meta["failures_addressed"]
-        item["failures_deferred"] = ruby_meta["failures_deferred"]
+        item["lucy_fix_path"] = _relative(lucy_fix_path, project_root)
+        item["failures_addressed"] = lucy_meta["failures_addressed"]
+        item["failures_deferred"] = lucy_meta["failures_deferred"]
         iterations.append(item)
         state = transition(
             project_root,

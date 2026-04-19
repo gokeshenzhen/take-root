@@ -59,7 +59,7 @@ def test_spinner_emits_single_line_on_non_tty(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_build_runtime_tag_uses_resolved_model() -> None:
-    resolved = resolve_persona_runtime_config(default_take_root_config(), "ruby")
+    resolved = resolve_persona_runtime_config(default_take_root_config(), "lucy")
 
     assert build_runtime_tag(resolved) == "gpt-5.4 · high"
 
@@ -70,11 +70,11 @@ def test_build_runtime_tag_reflects_configured_persona() -> None:
         config,
         personas={
             **config.personas,
-            "ruby": ActorRouteConfig(provider="codex_official", model="sonnet", effort="low"),
+            "lucy": ActorRouteConfig(provider="codex_official", model="sonnet", effort="low"),
         },
     )
 
-    resolved = resolve_persona_runtime_config(config, "ruby")
+    resolved = resolve_persona_runtime_config(config, "lucy")
 
     assert build_runtime_tag(resolved) == "gpt-5.4-mini · low"
 
@@ -96,7 +96,7 @@ def test_announce_persona_call_renders_inputs_and_output(
         action="评审中",
         inputs=[
             Path(".take_root/plan/jeff_proposal.md"),
-            Path(".take_root/plan/jack_r1.md"),
+            Path(".take_root/plan/neo_r1.md"),
         ],
         output=Path(".take_root/plan/robin_r2.md"),
         runtime_tag="qwen3-max · high",
@@ -104,7 +104,7 @@ def test_announce_persona_call_renders_inputs_and_output(
 
     rendered = stream.getvalue()
     assert "[plan r2] Robin 评审中" in rendered
-    assert "in : .take_root/plan/jeff_proposal.md, .take_root/plan/jack_r1.md" in rendered
+    assert "in : .take_root/plan/jeff_proposal.md, .take_root/plan/neo_r1.md" in rendered
     assert "out: .take_root/plan/robin_r2.md" in rendered
 
 
@@ -117,10 +117,10 @@ def test_announce_persona_call_includes_runtime_tag(
     announce_persona_call(
         phase="code",
         round_num=1,
-        persona="ruby",
+        persona="lucy",
         action="实现中",
         inputs=[],
-        output=Path(".take_root/code/ruby_r1.md"),
+        output=Path(".take_root/code/lucy_r1.md"),
         runtime_tag="gpt-5.4 · high",
     )
 
@@ -137,12 +137,12 @@ def test_render_artifact_summary_for_robin(
             "artifact: robin_review\n"
             "round: 2\n"
             "status: ongoing\n"
-            "addresses: jack_r1.md\n"
+            "addresses: neo_r1.md\n"
             "created_at: 2026-04-18T00:00:00Z\n"
             "remaining_concerns: 2\n"
             "---\n"
             "# Robin — Round 2 Review\n\n"
-            "## 1. 对 Jack 的回应\n"
+            "## 1. 对 Neo 的回应\n"
             "### J1.1 回应\n"
             "- **立场**: 同意\n\n"
             "## 2. 新发现 / 我的关切\n"
@@ -161,19 +161,19 @@ def test_render_artifact_summary_for_robin(
     )
 
     captured = capsys.readouterr()
-    assert "robin_r2  status=ongoing  concerns=2  addresses=jack_r1.md" in captured.err
-    assert "回应 Jack: J1.1 同意" in captured.err
+    assert "robin_r2  status=ongoing  concerns=2  addresses=neo_r1.md" in captured.err
+    assert "回应 Neo: J1.1 同意" in captured.err
     assert "新关切: [BLOCKER] run_code dirty tree" in captured.err
 
 
-def test_render_artifact_summary_ruby_show_commit_and_files(
+def test_render_artifact_summary_lucy_show_commit_and_files(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    artifact = tmp_path / "ruby_r2.md"
+    artifact = tmp_path / "lucy_r2.md"
     artifact.write_text(
         (
             "---\n"
-            "artifact: ruby_implementation\n"
+            "artifact: lucy_implementation\n"
             "round: 2\n"
             "status: ongoing\n"
             "addresses: peter_r1.md\n"
@@ -189,7 +189,7 @@ def test_render_artifact_summary_ruby_show_commit_and_files(
             "created_at: 2026-04-18T00:00:00Z\n"
             "open_pushbacks: 1\n"
             "---\n"
-            "# Ruby — Round 2 Implementation\n\n"
+            "# Lucy — Round 2 Implementation\n\n"
             "## 3. 实现决策\n"
             "- 复用现有 ui 输出函数。\n\n"
             "## 4. 遗留工作 / 已知限制\n"
@@ -200,13 +200,13 @@ def test_render_artifact_summary_ruby_show_commit_and_files(
 
     render_artifact_summary(
         artifact,
-        persona="ruby",
+        persona="lucy",
         elapsed_sec=14.0,
         runtime_tag="gpt-5.4 · high",
     )
 
     captured = capsys.readouterr()
-    assert "ruby_r2  status=ongoing  pushbacks=1  commit=abcdef1  files=5" in captured.err
+    assert "lucy_r2  status=ongoing  pushbacks=1  commit=abcdef1  files=5" in captured.err
     assert "files: src/take_root/ui.py, src/take_root/phase_ui.py," in captured.err
     assert "tests/test_plan.py" not in captured.err
 
@@ -221,7 +221,7 @@ def test_render_artifact_summary_tolerant_to_missing_sections(
             "artifact: robin_review\n"
             "round: 2\n"
             "status: ongoing\n"
-            "addresses: jack_r1.md\n"
+            "addresses: neo_r1.md\n"
             "created_at: 2026-04-18T00:00:00Z\n"
             "remaining_concerns: 1\n"
             "---\n"
@@ -240,8 +240,8 @@ def test_render_artifact_summary_tolerant_to_missing_sections(
     )
 
     captured = capsys.readouterr()
-    assert "robin_r2  status=ongoing  concerns=1  addresses=jack_r1.md" in captured.err
-    assert "回应 Jack:" not in captured.err
+    assert "robin_r2  status=ongoing  concerns=1  addresses=neo_r1.md" in captured.err
+    assert "回应 Neo:" not in captured.err
     assert "新关切:" not in captured.err
 
 
@@ -255,7 +255,7 @@ def test_render_artifact_summary_for_peter(
             "artifact: peter_review\n"
             "round: 1\n"
             "status: converged\n"
-            "addresses: ruby_r1.md\n"
+            "addresses: lucy_r1.md\n"
             "reviewed_commit: abcdef1234567\n"
             "files_reviewed: [src/take_root/ui.py]\n"
             "open_findings: 0\n"
@@ -283,7 +283,7 @@ def test_render_artifact_summary_for_peter(
 
 def test_extract_peer_response_multiple_stances() -> None:
     body = (
-        "## 1. 对 Jack 的回应\n"
+        "## 1. 对 Neo 的回应\n"
         "### J1.1 标题一\n"
         "- **立场**: 同意\n\n"
         "### J1.2 标题二\n"

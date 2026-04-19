@@ -61,16 +61,16 @@ def render_artifact_summary(
     info(colorize(f"✓ {line}   ({_format_elapsed_compact(elapsed_sec)})", status_color))
 
     if artifact == "robin_review":
-        _render_robin_or_jack_details(body, peer_label="回应 Jack", concern_label="新关切")
+        _render_robin_or_neo_details(body, peer_label="回应 Neo", concern_label="新关切")
         return
-    if artifact == "jack_review":
-        _render_robin_or_jack_details(body, peer_label="回应 Robin", concern_label="新攻击")
+    if artifact == "neo_review":
+        _render_robin_or_neo_details(body, peer_label="回应 Robin", concern_label="新攻击")
         return
-    if artifact == "ruby_implementation":
-        _render_ruby_details(meta, body)
+    if artifact == "lucy_implementation":
+        _render_lucy_details(meta, body)
         return
-    if artifact == "ruby_fix":
-        _render_ruby_fix_details(meta)
+    if artifact == "lucy_fix":
+        _render_lucy_fix_details(meta)
         return
     if artifact == "amy_test_report":
         _render_amy_details(meta)
@@ -84,7 +84,7 @@ def _extract_peer_response(body: str) -> list[tuple[str, str]]:
     section = _find_section(
         body,
         (
-            r"^## 1\. 对 Jack 的回应\s*$",
+            r"^## 1\. 对 Neo 的回应\s*$",
             r"^## 1\. 对 Robin 上轮回应的处置\s*$",
         ),
     )
@@ -128,12 +128,12 @@ def _format_summary_line(meta: dict[str, Any], stem: str) -> str:
             f"{stem}  status={status}  concerns={_int_or_q(meta.get('remaining_concerns'))}  "
             f"addresses={meta.get('addresses', '-')}"
         )
-    if meta.get("artifact") == "jack_review":
+    if meta.get("artifact") == "neo_review":
         return (
             f"{stem}  status={status}  attacks={_int_or_q(meta.get('open_attacks'))}  "
             f"addresses={meta.get('addresses', '-')}"
         )
-    if meta.get("artifact") == "ruby_implementation":
+    if meta.get("artifact") == "lucy_implementation":
         return (
             f"{stem}  status={status}  pushbacks={_int_or_q(meta.get('open_pushbacks'))}  "
             f"commit={_short_sha(meta.get('commit_sha'))}  "
@@ -144,7 +144,7 @@ def _format_summary_line(meta: dict[str, Any], stem: str) -> str:
         fail = counts.get("fail") if isinstance(counts, dict) else "?"
         passed = counts.get("passed") if isinstance(counts, dict) else "?"
         return f"{stem}  status={status}  passed={passed}  fail={fail}"
-    if meta.get("artifact") == "ruby_fix":
+    if meta.get("artifact") == "lucy_fix":
         return (
             f"{stem}  addressed={_int_or_q(meta.get('failures_addressed'))}  "
             f"deferred={_int_or_q(meta.get('failures_deferred'))}  "
@@ -182,7 +182,7 @@ def _summary_color(meta: dict[str, Any]) -> Literal["cyan", "green", "yellow", "
     return "yellow"
 
 
-def _render_robin_or_jack_details(body: str, *, peer_label: str, concern_label: str) -> None:
+def _render_robin_or_neo_details(body: str, *, peer_label: str, concern_label: str) -> None:
     responses = _extract_peer_response(body)[:3]
     if responses:
         joined = " · ".join(f"{ref} {stance}" for ref, stance in responses)
@@ -192,7 +192,7 @@ def _render_robin_or_jack_details(body: str, *, peer_label: str, concern_label: 
         info(colorize(f"  {concern_label}: {' ; '.join(concerns)}", "yellow"))
 
 
-def _render_ruby_details(meta: dict[str, Any], body: str) -> None:
+def _render_lucy_details(meta: dict[str, Any], body: str) -> None:
     files = _string_list(meta.get("files_changed"))
     if files:
         info(colorize(f"  files: {', '.join(files[:4])}", "dim"))
@@ -204,7 +204,7 @@ def _render_ruby_details(meta: dict[str, Any], body: str) -> None:
         info(colorize(f"  遗留 : {leftovers[0]}", "yellow"))
 
 
-def _render_ruby_fix_details(meta: dict[str, Any]) -> None:
+def _render_lucy_fix_details(meta: dict[str, Any]) -> None:
     addressed = meta.get("addresses")
     if isinstance(addressed, str) and addressed:
         info(colorize(f"  目标 : {addressed}", "dim"))

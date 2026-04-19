@@ -23,7 +23,7 @@ def test_load_and_save_config_roundtrip(tmp_path: Path) -> None:
     loaded = load_config(tmp_path)
     assert loaded.schema_version == 1
     assert loaded.init.provider == "claude_official"
-    assert loaded.personas["ruby"].provider == "codex_official"
+    assert loaded.personas["lucy"].provider == "codex_official"
 
 
 def test_resolve_persona_runtime_config_alias_for_compatible_provider(
@@ -42,7 +42,7 @@ def test_resolve_persona_runtime_config_alias_for_compatible_provider(
 
 def test_resolve_persona_runtime_config_clears_env_for_official(tmp_path: Path) -> None:
     config = default_take_root_config()
-    resolved = resolve_persona_runtime_config(config, "ruby")
+    resolved = resolve_persona_runtime_config(config, "lucy")
     assert resolved.provider_name == "codex_official"
     assert resolved.runtime_name == "codex"
     assert resolved.resolved_model == "gpt-5.4"
@@ -173,8 +173,8 @@ def test_resolve_persona_runtime_config_rejects_non_kimi_k25(
         init=config.init,
         personas={
             **config.personas,
-            "jack": ActorRouteConfig(provider="kimi", model="moonshot-v1-8k", effort="high"),
+            "neo": ActorRouteConfig(provider="kimi", model="moonshot-v1-8k", effort="high"),
         },
     )
     with pytest.raises(ConfigError):
-        resolve_persona_runtime_config(config, "jack")
+        resolve_persona_runtime_config(config, "neo")

@@ -11,14 +11,14 @@ from take_root.runtimes.base import RuntimeCallResult
 from take_root.state import load_or_create_state, transition
 
 
-def test_resolved_vcs_metadata_falls_back_to_ruby_artifact_values() -> None:
-    ruby_meta = {
+def test_resolved_vcs_metadata_falls_back_to_lucy_artifact_values() -> None:
+    lucy_meta = {
         "commit_sha": "138e300d9b6e8daadd93830a0229c9b061caded3",
         "snapshot_dir": ".take_root/code/snapshots/r1",
     }
 
     result = _resolved_vcs_metadata(
-        ruby_meta,
+        lucy_meta,
         {"commit_sha": None, "snapshot_dir": None},
     )
 
@@ -27,13 +27,13 @@ def test_resolved_vcs_metadata_falls_back_to_ruby_artifact_values() -> None:
 
 
 def test_resolved_vcs_metadata_prefers_new_vcs_result() -> None:
-    ruby_meta = {
+    lucy_meta = {
         "commit_sha": "old-sha",
         "snapshot_dir": ".take_root/code/snapshots/r1",
     }
 
     result = _resolved_vcs_metadata(
-        ruby_meta,
+        lucy_meta,
         {"commit_sha": "new-sha", "snapshot_dir": ".take_root/code/snapshots/r2"},
     )
 
@@ -60,12 +60,12 @@ def _write_final_plan(path: Path) -> None:
     )
 
 
-def _write_ruby_artifact(path: Path, *, round_num: int, status: str) -> None:
+def _write_lucy_artifact(path: Path, *, round_num: int, status: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         (
             "---\n"
-            "artifact: ruby_implementation\n"
+            "artifact: lucy_implementation\n"
             f"round: {round_num}\n"
             f"status: {status}\n"
             "addresses: final_plan.md\n"
@@ -76,7 +76,7 @@ def _write_ruby_artifact(path: Path, *, round_num: int, status: str) -> None:
             "created_at: 2026-04-17T00:00:00Z\n"
             "open_pushbacks: 0\n"
             "---\n"
-            "# Ruby\n"
+            "# Lucy\n"
         ),
         encoding="utf-8",
     )
@@ -90,7 +90,7 @@ def _write_peter_artifact(path: Path, *, round_num: int, status: str) -> None:
             "artifact: peter_review\n"
             f"round: {round_num}\n"
             f"status: {status}\n"
-            f"addresses: ruby_r{round_num}.md\n"
+            f"addresses: lucy_r{round_num}.md\n"
             "reviewed_commit: null\n"
             "files_reviewed: []\n"
             "open_findings: 0\n"
@@ -130,9 +130,9 @@ class _FakeRuntime:
         output_path = Path(output_line.split(": ", 1)[1])
         self.calls.append(output_path)
         self.policies.append(policy)
-        if self.persona_name == "ruby":
+        if self.persona_name == "lucy":
             round_num = int(output_path.stem.rsplit("r", 1)[1])
-            _write_ruby_artifact(output_path, round_num=round_num, status="converged")
+            _write_lucy_artifact(output_path, round_num=round_num, status="converged")
         else:
             round_num = int(output_path.stem.rsplit("r", 1)[1])
             self.peter_attempts += 1
@@ -148,8 +148,8 @@ def test_run_code_resumes_partial_round_with_peter_review_first(
     save_config(tmp_path, default_take_root_config())
     load_or_create_state(tmp_path)
     _write_final_plan(tmp_path / ".take_root" / "plan" / "final_plan.md")
-    _write_ruby_artifact(
-        tmp_path / ".take_root" / "code" / "ruby_r1.md",
+    _write_lucy_artifact(
+        tmp_path / ".take_root" / "code" / "lucy_r1.md",
         round_num=1,
         status="converged",
     )
@@ -200,8 +200,8 @@ def test_run_code_retries_missing_peter_artifact_once(monkeypatch, tmp_path: Pat
     save_config(tmp_path, default_take_root_config())
     load_or_create_state(tmp_path)
     _write_final_plan(tmp_path / ".take_root" / "plan" / "final_plan.md")
-    _write_ruby_artifact(
-        tmp_path / ".take_root" / "code" / "ruby_r1.md",
+    _write_lucy_artifact(
+        tmp_path / ".take_root" / "code" / "lucy_r1.md",
         round_num=1,
         status="converged",
     )
@@ -291,6 +291,6 @@ def test_run_code_prints_rich_phase_output(
     run_code(tmp_path, vcs_mode="off", max_rounds=2)
 
     captured = capsys.readouterr()
-    assert "[code r1] Ruby 实现中" in captured.err
-    assert "ruby_r1  status=converged  pushbacks=0  commit=-  files=0" in captured.err
+    assert "[code r1] Lucy 实现中" in captured.err
+    assert "lucy_r1  status=converged  pushbacks=0  commit=-  files=0" in captured.err
     assert "peter_r1  (gpt-5.4 · high) ── converged · 0 open" in captured.err

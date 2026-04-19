@@ -235,13 +235,13 @@ def reconcile_state_from_disk(project_root: Path) -> dict[str, Any]:
         item = rounds_map.setdefault(n, {"n": n})
         item["robin_path"] = _relative(path, project_root)
         item["robin_status"] = parsed.get("status", "ongoing")
-    for n, path in _collect_numbered("jack_r", plan_dir):
+    for n, path in _collect_numbered("neo_r", plan_dir):
         parsed = _safe_parse_frontmatter(path)
         if parsed is None:
             continue
         item = rounds_map.setdefault(n, {"n": n})
-        item["jack_path"] = _relative(path, project_root)
-        item["jack_status"] = parsed.get("status", "ongoing")
+        item["neo_path"] = _relative(path, project_root)
+        item["neo_status"] = parsed.get("status", "ongoing")
     if rounds_map:
         plan["rounds"] = [rounds_map[key] for key in sorted(rounds_map)]
         plan["current_round"] = max(rounds_map) + 1
@@ -257,29 +257,29 @@ def reconcile_state_from_disk(project_root: Path) -> dict[str, Any]:
             plan["converged"] = bool(parsed.get("converged", True))
             state["current_phase"] = "code"
 
-    ruby_rounds: dict[int, dict[str, Any]] = {}
-    for n, path in _collect_numbered("ruby_r", code_dir):
+    lucy_rounds: dict[int, dict[str, Any]] = {}
+    for n, path in _collect_numbered("lucy_r", code_dir):
         parsed = _safe_parse_frontmatter(path)
         if parsed is None:
             continue
-        item = ruby_rounds.setdefault(n, {"n": n})
-        item["ruby_path"] = _relative(path, project_root)
-        item["ruby_status"] = parsed.get("status", "ongoing")
+        item = lucy_rounds.setdefault(n, {"n": n})
+        item["lucy_path"] = _relative(path, project_root)
+        item["lucy_status"] = parsed.get("status", "ongoing")
     for n, path in _collect_numbered("peter_r", code_dir):
         parsed = _safe_parse_frontmatter(path)
         if parsed is None:
             continue
-        item = ruby_rounds.setdefault(n, {"n": n})
+        item = lucy_rounds.setdefault(n, {"n": n})
         item["peter_path"] = _relative(path, project_root)
         item["peter_status"] = parsed.get("status", "ongoing")
-    if ruby_rounds:
+    if lucy_rounds:
         code["status"] = "in_progress"
         code["result"] = "in_progress"
         code["next_action"] = _code_next_action("in_progress", code["last_max_rounds"])
-        code["rounds"] = [ruby_rounds[key] for key in sorted(ruby_rounds)]
+        code["rounds"] = [lucy_rounds[key] for key in sorted(lucy_rounds)]
         latest_round = code["rounds"][-1]
         if (
-            latest_round.get("ruby_status") == "converged"
+            latest_round.get("lucy_status") == "converged"
             and latest_round.get("peter_status") == "converged"
         ):
             code["status"] = "done"
@@ -313,12 +313,12 @@ def reconcile_state_from_disk(project_root: Path) -> dict[str, Any]:
         item = iterations_map.setdefault(n, {"n": n})
         item["amy_path"] = _relative(path, project_root)
         item["amy_status"] = parsed.get("status", "has_failures")
-    for n, path in _collect_numbered("ruby_fix_r", test_dir):
+    for n, path in _collect_numbered("lucy_fix_r", test_dir):
         parsed = _safe_parse_frontmatter(path)
         if parsed is None:
             continue
         item = iterations_map.setdefault(n, {"n": n})
-        item["ruby_fix_path"] = _relative(path, project_root)
+        item["lucy_fix_path"] = _relative(path, project_root)
         item["failures_addressed"] = parsed.get("failures_addressed")
         item["failures_deferred"] = parsed.get("failures_deferred")
     if iterations_map:

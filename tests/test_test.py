@@ -80,7 +80,7 @@ def test_run_test_prints_all_pass_summary(
     save_config(tmp_path, default_take_root_config())
     load_or_create_state(tmp_path)
     _write_final_plan(tmp_path / ".take_root" / "plan" / "final_plan.md")
-    _write_code_artifact(tmp_path / ".take_root" / "code" / "ruby_r1.md", "converged")
+    _write_code_artifact(tmp_path / ".take_root" / "code" / "lucy_r1.md", "converged")
     _write_code_artifact(tmp_path / ".take_root" / "code" / "peter_r1.md", "converged")
 
     monkeypatch.setattr("take_root.phases.test._check_runtime_available", lambda runtime_name: None)

@@ -36,7 +36,7 @@ def test_print_status_uses_summary_view(tmp_path: Path, capsys: pytest.CaptureFi
                 "last_max_rounds": 5,
                 "rounds": [
                     {
-                        "ruby_path": ".take_root/code/ruby_r5.md",
+                        "lucy_path": ".take_root/code/lucy_r5.md",
                         "peter_path": ".take_root/code/peter_r5.md",
                     }
                 ],

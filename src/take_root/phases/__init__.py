@@ -70,8 +70,8 @@ def _validate_artifact_structure(path: Path, metadata: dict[str, Any], body: str
     if artifact == "robin_review":
         _validate_robin_review(path, metadata, body)
         return
-    if artifact == "jack_review":
-        _validate_jack_review(path, metadata, body)
+    if artifact == "neo_review":
+        _validate_neo_review(path, metadata, body)
         return
     if artifact == "final_plan":
         _validate_final_plan(path, body)
@@ -82,15 +82,15 @@ def _validate_robin_review(path: Path, metadata: dict[str, Any], body: str) -> N
     _require_int_key(path, metadata, "remaining_concerns")
     _require_heading(path, body, r"^# Robin — Round \d+ Review$")
     if round_num > 1:
-        _require_heading(path, body, r"^## 1\. 对 Jack 的回应")
+        _require_heading(path, body, r"^## 1\. 对 Neo 的回应")
     _require_heading(path, body, r"^## 2\. 新发现 / 我的关切$")
     _require_heading(path, body, r"^## 3\. 收敛评估$")
 
 
-def _validate_jack_review(path: Path, metadata: dict[str, Any], body: str) -> None:
+def _validate_neo_review(path: Path, metadata: dict[str, Any], body: str) -> None:
     round_num = _require_int_key(path, metadata, "round")
     _require_int_key(path, metadata, "open_attacks")
-    _require_heading(path, body, r"^# Jack — Round \d+ Adversarial Review$")
+    _require_heading(path, body, r"^# Neo — Round \d+ Adversarial Review$")
     if round_num > 1:
         _require_heading(path, body, r"^## 1\. 对 Robin 上轮回应的处置")
     _require_heading(path, body, r"^## 2\. 新攻击点$")

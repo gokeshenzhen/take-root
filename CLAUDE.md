@@ -33,11 +33,11 @@ It drives `configure -> init -> plan -> code -> test`, persists artifacts under 
 ├── pyproject.toml
 ├── personas/
 │   ├── amy.md
-│   ├── jack.md
+│   ├── neo.md
 │   ├── jeff.md
 │   ├── peter.md
 │   ├── robin.md
-│   └── ruby.md
+│   └── lucy.md
 ├── plan/
 │   ├── IMPLEMENTATION_HANDOFF.md
 │   ├── IMPLEMENTATION_SPEC.md
@@ -154,15 +154,15 @@ It drives `configure -> init -> plan -> code -> test`, persists artifacts under 
   - updates `.gitignore` with `.take_root/` only if project is already a git repo
 - `src/take_root/phases/plan.py:run_plan()`
   - Jeff interactive proposal
-  - Robin and Jack review-only non-interactive rounds
+  - Robin and Neo review-only non-interactive rounds
   - Robin finalizes `.take_root/plan/final_plan.md`
 - `src/take_root/phases/code.py:run_code()`
-  - Ruby implementation rounds
+  - Lucy implementation rounds
   - Peter review rounds
   - optional per-round VCS persistence
 - `src/take_root/phases/test.py:run_test()`
   - Amy full-test iterations
-  - Ruby fix iterations
+  - Lucy fix iterations
   - exits on all-pass or iteration cap
 
 ## Shared Helpers
@@ -173,7 +173,7 @@ It drives `configure -> init -> plan -> code -> test`, persists artifacts under 
   - aborts above `32 KiB`
 - `src/take_root/phases/__init__.py:validate_artifact()`
   - validates artifact existence and required frontmatter keys
-  - enforces additional heading structure for `robin_review`, `jack_review`, and `final_plan`
+  - enforces additional heading structure for `robin_review`, `neo_review`, and `final_plan`
 
 ## CLI Surface
 
@@ -238,7 +238,7 @@ take-root code --vcs auto
 take-root test --max-iterations 5
 take-root resume
 take-root logs plan --round 1
-take-root doctor --persona ruby
+take-root doctor --persona lucy
 take-root doctor --persona all --no-call
 ```
 
@@ -282,14 +282,14 @@ Common artifact names:
 
 - `plan/jeff_proposal.md`
 - `plan/robin_rN.md`
-- `plan/jack_rN.md`
+- `plan/neo_rN.md`
 - `plan/final_plan.md`
 - `plan/policy_violations/<timestamp>_<persona>.json`
-- `code/ruby_rN.md`
+- `code/lucy_rN.md`
 - `code/peter_rN.md`
 - `code/snapshots/rN/...`
 - `test/amy_rN.md`
-- `test/ruby_fix_rN.md`
+- `test/lucy_fix_rN.md`
 - `doctor/<persona>_report.md`
 - `doctor/<persona>_runtime_env.json`
 
@@ -351,8 +351,8 @@ Built-in persona route defaults:
 - `init -> claude_official / opus / medium`
 - `jeff -> qwen / sonnet / medium`
 - `robin -> qwen / opus / high`
-- `jack -> kimi / sonnet / high`
-- `ruby -> codex_official / opus / high`
+- `neo -> kimi / sonnet / high`
+- `lucy -> codex_official / opus / high`
 - `peter -> codex_official / opus / high`
 - `amy -> codex_official / sonnet / medium`
 
@@ -493,12 +493,12 @@ Derived from source and tooling:
 11. `doctor` can perform a real runtime call unless `--no-call` is set. It writes report/env/stdout/stderr files under `.take_root/doctor/`.
 12. `resume` ignores prior CLI tuning. It resumes with hardcoded defaults: plan `max_rounds=5`, code `vcs_mode=auto`, test `max_iterations=5`, `escalate=auto`.
 13. Plan review rounds are enforced as review-only. Guardrails snapshot the workspace, block suspicious review context lines, and reject out-of-scope file changes.
-14. Plan-phase Robin and Jack calls are non-interactive; only Jeff is interactive in plan.
+14. Plan-phase Robin and Neo calls are non-interactive; only Jeff is interactive in plan.
 15. Auto VCS on a dirty git tree is interactive. The prompt offers `commit / stash / proceed / abort`, but only `proceed` continues; `commit` and `stash` still abort and require manual action.
 16. Auto VCS on a non-git project can initialize git and create a bootstrap commit automatically.
 17. Snapshot VCS is post-round only. There is no pre-round baseline snapshot.
-18. Code-phase Ruby artifact validation requires `commit_sha` and `snapshot_dir` keys even when the selected VCS backend returns `None`.
-19. Test-phase Ruby fix artifacts also require VCS metadata keys, but `run_test()` does not call `vcs_handler.post_round()`.
+18. Code-phase Lucy artifact validation requires `commit_sha` and `snapshot_dir` keys even when the selected VCS backend returns `None`.
+19. Test-phase Lucy fix artifacts also require VCS metadata keys, but `run_test()` does not call `vcs_handler.post_round()`.
 20. `reconcile_state_from_disk()` rebuilds phase progress from artifact filenames plus frontmatter, not from prior intent in memory.
 21. Malformed artifact files are deleted during reconciliation rather than tolerated.
 22. Boot messages above `32 KiB` fail fast with `ArtifactError`; large artifact-history lists can trigger this.
