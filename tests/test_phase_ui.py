@@ -166,6 +166,41 @@ def test_render_artifact_summary_for_robin(
     assert "新关切: [BLOCKER] run_code dirty tree" in captured.err
 
 
+def test_render_artifact_summary_with_timings_suffix(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    artifact = tmp_path / "robin_r1.md"
+    artifact.write_text(
+        (
+            "---\n"
+            "artifact: robin_review\n"
+            "round: 1\n"
+            "status: ongoing\n"
+            "addresses: jeff_proposal.md\n"
+            "created_at: 2026-04-18T00:00:00Z\n"
+            "remaining_concerns: 1\n"
+            "---\n"
+            "# Robin — Round 1 Review\n\n"
+            "## 2. 新发现 / 我的关切\n"
+            "### [MINOR] baseline\n\n"
+            "## 3. 收敛评估\n"
+            "- **我的判断**: ongoing\n"
+        ),
+        encoding="utf-8",
+    )
+
+    render_artifact_summary(
+        artifact,
+        persona="robin",
+        elapsed_sec=12.0,
+        runtime_tag="qwen3-max · high",
+        timings={"wall_sec": 12.0, "llm_sec": 10.0, "harness_overhead_pct": 16.7},
+    )
+
+    captured = capsys.readouterr()
+    assert "(12s · LLM 10s · overhead 16.7%)" in captured.err
+
+
 def test_render_artifact_summary_lucy_show_commit_and_files(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -279,6 +314,42 @@ def test_render_artifact_summary_for_peter(
     captured = capsys.readouterr()
     assert "peter_r1  (gpt-5.4 · high) ── converged · 0 open" in captured.err
     assert "reviewed=abcdef1  elapsed=9s" in captured.err
+
+
+def test_render_artifact_summary_for_peter_with_timings(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    artifact = tmp_path / "peter_r2.md"
+    artifact.write_text(
+        (
+            "---\n"
+            "artifact: peter_review\n"
+            "round: 2\n"
+            "status: converged\n"
+            "addresses: lucy_r2.md\n"
+            "reviewed_commit: abcdef1234567\n"
+            "files_reviewed: [src/take_root/ui.py]\n"
+            "open_findings: 0\n"
+            "created_at: 2026-04-18T00:00:00Z\n"
+            "---\n"
+            "# Peter — Round 2 Code Review\n\n"
+            "## 2. 新发现\n\n"
+            "## 4. 收敛评估\n"
+            "- **我的判断**: converged\n"
+        ),
+        encoding="utf-8",
+    )
+
+    render_artifact_summary(
+        artifact,
+        persona="peter",
+        elapsed_sec=9.0,
+        runtime_tag="gpt-5.4 · high",
+        timings={"wall_sec": 9.0, "llm_sec": 8.0, "harness_overhead_pct": 11.1},
+    )
+
+    captured = capsys.readouterr()
+    assert "elapsed=9s · LLM 8s · overhead 11.1%" in captured.err
 
 
 def test_extract_peer_response_multiple_stances() -> None:

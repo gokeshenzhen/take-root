@@ -8,6 +8,7 @@ import pytest
 
 from take_root.config import default_take_root_config, save_config
 from take_root.errors import ArtifactError, PolicyError, RuntimeCallError
+from take_root.frontmatter import read_frontmatter_file
 from take_root.phases.plan import run_plan
 from take_root.runtimes.base import RuntimeCallResult, RuntimePolicy
 from take_root.state import load_or_create_state, load_state, transition
@@ -34,7 +35,7 @@ def _prepare_plan_project(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
     (tmp_path / "CLAUDE.md").write_text("# safe context\n", encoding="utf-8")
     (tmp_path / "AGENTS.md").symlink_to("CLAUDE.md")
     (tmp_path / ".take_root" / "plan").mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr("take_root.phases.plan._check_runtime_available", lambda _: None)
+    monkeypatch.setattr("take_root.phases.plan.check_runtime_available", lambda _: None)
     monkeypatch.setattr("take_root.phases.plan._maybe_refresh_claude_md", lambda _: None)
 
 
@@ -283,7 +284,7 @@ def test_run_plan_applies_review_only_policy(
     calls: list[dict[str, Any]] = []
     harness = _RuntimeHarness(recorder=calls)
     monkeypatch.setattr(
-        "take_root.phases.plan._runtime_for",
+        "take_root.phases.plan.runtime_for",
         lambda persona, project_root, config: harness.build(persona.name),
     )
 
@@ -296,6 +297,22 @@ def test_run_plan_applies_review_only_policy(
     assert calls[0]["policy"].output_path == tmp_path / ".take_root" / "plan" / "robin_r1.md"
     assert calls[1]["policy"].output_path == tmp_path / ".take_root" / "plan" / "neo_r1.md"
     assert calls[2]["policy"].output_path == tmp_path / ".take_root" / "plan" / "final_plan.md"
+    robin_meta = read_frontmatter_file(tmp_path / ".take_root" / "plan" / "robin_r1.md").metadata
+    neo_meta = read_frontmatter_file(tmp_path / ".take_root" / "plan" / "neo_r1.md").metadata
+    final_plan_meta = read_frontmatter_file(
+        tmp_path / ".take_root" / "plan" / "final_plan.md"
+    ).metadata
+    assert "timings" in robin_meta
+    assert "timings" in neo_meta
+    assert "timings" in final_plan_meta
+    perf_lines = (
+        (tmp_path / ".take_root" / "perf" / "plan.jsonl")
+        .read_text(encoding="utf-8")
+        .strip()
+        .splitlines()
+    )
+    assert len(perf_lines) == 3
+    assert all(isinstance(json.loads(line), dict) for line in perf_lines)
 
 
 @pytest.mark.parametrize("actor", ["robin", "neo"])
@@ -308,7 +325,7 @@ def test_run_plan_rejects_extra_file_changes(
     calls: list[dict[str, Any]] = []
     harness = _RuntimeHarness(recorder=calls, extra_file_actor=actor)
     monkeypatch.setattr(
-        "take_root.phases.plan._runtime_for",
+        "take_root.phases.plan.runtime_for",
         lambda persona, project_root, config: harness.build(persona.name),
     )
 
@@ -339,7 +356,7 @@ def test_run_plan_ignores_doctor_artifacts_during_review_only(
     calls: list[dict[str, Any]] = []
     harness = _RuntimeHarness(recorder=calls, doctor_file_actor="robin")
     monkeypatch.setattr(
-        "take_root.phases.plan._runtime_for",
+        "take_root.phases.plan.runtime_for",
         lambda persona, project_root, config: harness.build(persona.name),
     )
 
@@ -360,7 +377,7 @@ def test_run_plan_prints_rich_phase_output(
     calls: list[dict[str, Any]] = []
     harness = _RuntimeHarness(recorder=calls)
     monkeypatch.setattr(
-        "take_root.phases.plan._runtime_for",
+        "take_root.phases.plan.runtime_for",
         lambda persona, project_root, config: harness.build(persona.name),
     )
 
@@ -385,7 +402,7 @@ def test_run_plan_retries_invalid_neo_round_artifact_once(
     calls: list[dict[str, Any]] = []
     harness = _RuntimeHarness(recorder=calls, retry_invalid_actor="neo")
     monkeypatch.setattr(
-        "take_root.phases.plan._runtime_for",
+        "take_root.phases.plan.runtime_for",
         lambda persona, project_root, config: harness.build(persona.name),
     )
 
@@ -406,7 +423,7 @@ def test_run_plan_rejects_malformed_robin_artifact(
     calls: list[dict[str, Any]] = []
     harness = _RuntimeHarness(recorder=calls, malformed_actor="robin")
     monkeypatch.setattr(
-        "take_root.phases.plan._runtime_for",
+        "take_root.phases.plan.runtime_for",
         lambda persona, project_root, config: harness.build(persona.name),
     )
 
@@ -427,7 +444,7 @@ def test_run_plan_blocks_suspicious_context(
     calls: list[dict[str, Any]] = []
     harness = _RuntimeHarness(recorder=calls)
     monkeypatch.setattr(
-        "take_root.phases.plan._runtime_for",
+        "take_root.phases.plan.runtime_for",
         lambda persona, project_root, config: harness.build(persona.name),
     )
 
@@ -444,7 +461,7 @@ def test_run_plan_accepts_valid_artifact_after_runtime_error(
     calls: list[dict[str, Any]] = []
     harness = _RuntimeHarness(recorder=calls, late_error_actor="robin")
     monkeypatch.setattr(
-        "take_root.phases.plan._runtime_for",
+        "take_root.phases.plan.runtime_for",
         lambda persona, project_root, config: harness.build(persona.name),
     )
 
@@ -507,7 +524,7 @@ def test_run_plan_restarts_from_r1_after_stale_state_is_reconciled(
     calls: list[dict[str, Any]] = []
     harness = _RuntimeHarness(recorder=calls)
     monkeypatch.setattr(
-        "take_root.phases.plan._runtime_for",
+        "take_root.phases.plan.runtime_for",
         lambda persona, project_root, config: harness.build(persona.name),
     )
 
@@ -530,7 +547,7 @@ def test_run_plan_resumes_incomplete_round_from_missing_neo_artifact(
     calls: list[dict[str, Any]] = []
     harness = _RuntimeHarness(recorder=calls)
     monkeypatch.setattr(
-        "take_root.phases.plan._runtime_for",
+        "take_root.phases.plan.runtime_for",
         lambda persona, project_root, config: harness.build(persona.name),
     )
 

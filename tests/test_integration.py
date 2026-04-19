@@ -160,7 +160,7 @@ def test_plan_phase_with_mocked_runtimes(monkeypatch: pytest.MonkeyPatch, tmp_pa
             return RuntimeCallResult(0, "", "", 0.1)
 
     monkeypatch.setattr(
-        "take_root.phases.plan._runtime_for",
+        "take_root.phases.plan.runtime_for",
         lambda persona, project_root, config: FakeRuntime(),
     )
     state = run_plan(tmp_path, max_rounds=2)

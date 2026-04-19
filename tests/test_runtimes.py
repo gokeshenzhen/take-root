@@ -10,6 +10,7 @@ import pytest
 from take_root.config import ResolvedRuntimeConfig
 from take_root.errors import RuntimeCallError
 from take_root.persona import Persona
+from take_root.runtimes import runtime_for
 from take_root.runtimes.base import BaseRuntime, RuntimeCallResult, RuntimeConfig, RuntimePolicy
 from take_root.runtimes.claude import ClaudeRuntime
 from take_root.runtimes.codex import CodexRuntime
@@ -307,3 +308,26 @@ def test_base_runtime_subprocess_env_clears_and_injects(tmp_path: Path) -> None:
     )
     env = runtime._subprocess_env()
     assert env["ANTHROPIC_MODEL"] == "qwen3.6-plus"
+
+
+def test_runtime_for_uses_fake_override(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from take_root.config import default_take_root_config
+
+    monkeypatch.setenv("TAKE_ROOT_RUNTIME_OVERRIDE", "fake")
+
+    runtime = runtime_for(
+        Persona(
+            name="lucy",
+            role="r",
+            runtime="codex",
+            interactive=False,
+            output_artifacts=["a.md"],
+            system_prompt="SYS",
+            source_path=Path("/tmp/p.md"),
+            raw_frontmatter={"model": "m1", "reasoning": "high"},
+        ),
+        tmp_path,
+        default_take_root_config(),
+    )
+
+    assert runtime.__class__.__name__ == "FakeRuntime"

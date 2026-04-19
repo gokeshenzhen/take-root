@@ -12,6 +12,14 @@ dependencies = [
   "PyYAML>=6.0.1",
 ]
 
+[project.optional-dependencies]
+dev = [
+  "pytest>=7",
+  "pytest-benchmark>=4.0",
+  "mypy",
+  "ruff",
+]
+
 [project.scripts]
 take-root = "take_root.cli:main"
 
@@ -27,7 +35,11 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 markers = [
   "integration: integration tests requiring PYTEST_INTEGRATION=1",
+  "perf: harness performance benchmarks (slow-ish; use --benchmark-only or pytest -m perf)",
 ]
+
+[tool.pytest-benchmark]
+min_rounds = 3
 
 [tool.ruff]
 target-version = "py311"

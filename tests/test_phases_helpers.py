@@ -33,6 +33,43 @@ def test_validate_artifact_success(tmp_path: Path) -> None:
     assert meta["a"] == 1
 
 
+def test_validate_artifact_without_timings(tmp_path: Path) -> None:
+    path = tmp_path / "a.md"
+    path.write_text("---\na: 1\nb: 2\n---\nbody\n", encoding="utf-8")
+
+    meta = validate_artifact(path, ["a", "b"])
+
+    assert "timings" not in meta
+
+
+def test_validate_artifact_with_timings(tmp_path: Path) -> None:
+    path = tmp_path / "a.md"
+    path.write_text(
+        (
+            "---\n"
+            "a: 1\n"
+            "b: 2\n"
+            "timings:\n"
+            "  wall_sec: 10.0\n"
+            "  llm_sec: 8.0\n"
+            "  harness_sec: 2.0\n"
+            "  harness_overhead_pct: 20.0\n"
+            "  breakdown:\n"
+            "    validate_artifact_ms: 5\n"
+            "    runtime_setup_ms: 1\n"
+            "    runtime_teardown_ms: 1\n"
+            "    retry_backoff_ms: 0\n"
+            "---\n"
+            "body\n"
+        ),
+        encoding="utf-8",
+    )
+
+    meta = validate_artifact(path, ["a", "b"])
+
+    assert isinstance(meta["timings"], dict)
+
+
 def test_validate_artifact_missing_required(tmp_path: Path) -> None:
     path = tmp_path / "a.md"
     path.write_text("---\na: 1\n---\nbody\n", encoding="utf-8")

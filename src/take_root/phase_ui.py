@@ -38,6 +38,7 @@ def render_artifact_summary(
     persona: str,
     elapsed_sec: float,
     runtime_tag: str,
+    timings: dict[str, Any] | None = None,
 ) -> None:
     """Read a generated artifact and render a small terminal summary."""
     try:
@@ -50,15 +51,15 @@ def render_artifact_summary(
     body = parsed.body
     artifact = str(meta.get("artifact", ""))
     if artifact == "peter_review":
-        _render_peter_summary(output_path, meta, body, elapsed_sec, runtime_tag)
+        _render_peter_summary(output_path, meta, body, elapsed_sec, runtime_tag, timings)
         return
 
     del persona
     line = _format_summary_line(meta, output_path.stem)
     if not line:
-        line = f"{output_path.stem}  ({_format_elapsed_compact(elapsed_sec)})"
+        line = f"{output_path.stem}  ({_timing_suffix(elapsed_sec, timings)})"
     status_color = _summary_color(meta)
-    info(colorize(f"✓ {line}   ({_format_elapsed_compact(elapsed_sec)})", status_color))
+    info(colorize(f"✓ {line}   ({_timing_suffix(elapsed_sec, timings)})", status_color))
 
     if artifact == "robin_review":
         _render_robin_or_neo_details(body, peer_label="回应 Neo", concern_label="新关切")
@@ -242,12 +243,11 @@ def _render_peter_summary(
     body: str,
     elapsed_sec: float,
     runtime_tag: str,
+    timings: dict[str, Any] | None,
 ) -> None:
     status = str(meta.get("status", "-"))
     open_count = _int_or_q(meta.get("open_findings"))
-    header = (
-        f"┌ {output_path.stem}  ({runtime_tag}) ── {status} · {open_count} open ┐"
-    )
+    header = f"┌ {output_path.stem}  ({runtime_tag}) ── {status} · {open_count} open ┐"
     info(colorize(header, _summary_color(meta)))
     findings = _extract_top_concerns(body, max_items=3)
     if findings:
@@ -257,7 +257,7 @@ def _render_peter_summary(
         info(colorize("│ 无未决 BLOCKER / MAJOR，评审收敛。", "dim"))
     footer = (
         f"└ reviewed={_short_sha(meta.get('reviewed_commit'))}  "
-        f"elapsed={_format_elapsed_compact(elapsed_sec)} ┘"
+        f"elapsed={_timing_suffix(elapsed_sec, timings)} ┘"
     )
     info(colorize(footer, "dim"))
 
@@ -288,6 +288,19 @@ def _phase_prefix(phase: str, round_num: int | None) -> str:
 
 def _format_elapsed_compact(elapsed_sec: float) -> str:
     return f"{round(elapsed_sec)}s"
+
+
+def _format_timing_compact(timings: dict[str, Any]) -> str:
+    wall = round(float(timings.get("wall_sec", 0)))
+    llm = round(float(timings.get("llm_sec", 0)))
+    overhead = float(timings.get("harness_overhead_pct", 0.0))
+    return f"{wall}s · LLM {llm}s · overhead {overhead:.1f}%"
+
+
+def _timing_suffix(elapsed_sec: float, timings: dict[str, Any] | None) -> str:
+    if timings is None:
+        return _format_elapsed_compact(elapsed_sec)
+    return _format_timing_compact(timings)
 
 
 def _int_or_q(value: Any) -> str:

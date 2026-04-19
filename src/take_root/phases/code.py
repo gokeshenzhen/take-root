@@ -1,18 +1,26 @@
 from __future__ import annotations
 
 import logging
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any, Literal
 
 from take_root.artifacts import artifact_path
-from take_root.config import TakeRootConfig, require_config, resolve_persona_runtime_config
+from take_root.config import require_config, resolve_persona_runtime_config
 from take_root.errors import ConfigError
-from take_root.persona import Persona, find_harness_root, load_persona
+from take_root.perf import (
+    PhaseTimer,
+    aggregate_runtime_timings,
+    append_perf_record,
+    build_perf_record,
+    compose_timings,
+    inject_timings_into_artifact,
+)
+from take_root.persona import find_harness_root, load_persona
 from take_root.phase_ui import announce_persona_call, build_runtime_tag, render_artifact_summary
 from take_root.phases import format_boot_message, validate_artifact
-from take_root.runtimes.base import BaseRuntime, RuntimePolicy
-from take_root.runtimes.claude import ClaudeRuntime
-from take_root.runtimes.codex import CodexRuntime
+from take_root.runtimes import check_runtime_available, runtime_for
+from take_root.runtimes.base import BaseRuntime, RuntimeCallResult, RuntimePolicy
 from take_root.state import reconcile_state_from_disk, transition
 from take_root.summary import write_run_summary
 from take_root.ui import Spinner
@@ -20,29 +28,6 @@ from take_root.vcs import VCSHandler, select_vcs_mode
 
 DEFAULT_CODE_ROUNDS = 5
 LOGGER = logging.getLogger(__name__)
-
-
-def _runtime_for(
-    persona: Persona,
-    project_root: Path,
-    config: TakeRootConfig,
-) -> BaseRuntime:
-    resolved_config = resolve_persona_runtime_config(config, persona.name)
-    if resolved_config.runtime_name == "claude":
-        return ClaudeRuntime(persona, project_root, resolved_config=resolved_config)
-    if resolved_config.runtime_name == "codex":
-        return CodexRuntime(persona, project_root, resolved_config=resolved_config)
-    raise ConfigError(f"Unsupported runtime: {resolved_config.runtime_name}")
-
-
-def _check_runtime_available(runtime_name: str) -> None:
-    if runtime_name == "claude":
-        ClaudeRuntime.check_available()
-        return
-    if runtime_name == "codex":
-        CodexRuntime.check_available()
-        return
-    raise ConfigError(f"Unsupported runtime: {runtime_name}")
 
 
 def _relative(path: Path, project_root: Path) -> str:
@@ -136,17 +121,22 @@ def _call_noninteractive_with_artifact_retry(
     output_path: Path,
     required_keys: list[str],
     max_attempts: int = 2,
+    timer: PhaseTimer | None = None,
+    runtime_result_sink: list[RuntimeCallResult] | None = None,
 ) -> dict[str, Any]:
     current_boot = boot_message
     for attempt in range(1, max_attempts + 1):
-        runtime.call_noninteractive(
+        result = runtime.call_noninteractive(
             current_boot,
             cwd=cwd,
             timeout_sec=timeout_sec,
             policy=RuntimePolicy.review_only(output_path),
         )
+        if runtime_result_sink is not None:
+            runtime_result_sink.append(result)
         try:
-            return validate_artifact(output_path, required_keys)
+            with timer.step("validate_artifact_ms") if timer else nullcontext():
+                return validate_artifact(output_path, required_keys)
         except Exception as exc:
             if attempt >= max_attempts:
                 raise
@@ -188,7 +178,7 @@ def run_code(
     lucy = load_persona("lucy", project_root, harness_root=harness_root)
     peter = load_persona("peter", project_root, harness_root=harness_root)
     for persona in (lucy, peter):
-        _check_runtime_available(resolve_persona_runtime_config(config, persona.name).runtime_name)
+        check_runtime_available(resolve_persona_runtime_config(config, persona.name).runtime_name)
 
     final_plan = (
         plan_file
@@ -227,9 +217,13 @@ def run_code(
             if round_num > 1
             else None
         )
-        vcs_handler.pre_round(round_num)
+        lucy_timer = PhaseTimer()
+        with lucy_timer.step("vcs_pre_round_ms"):
+            vcs_handler.pre_round(round_num)
         lucy_elapsed_sec: float | None = None
         lucy_tag = ""
+        lucy_timings: dict[str, Any] | None = None
+        lucy_result: RuntimeCallResult | None = None
 
         if not lucy_path.exists():
             lucy_resolved = resolve_persona_runtime_config(config, lucy.name)
@@ -247,7 +241,7 @@ def run_code(
                 output=Path(_relative(lucy_path, project_root)),
                 runtime_tag=lucy_tag,
             )
-            lucy_runtime = _runtime_for(lucy, project_root, config)
+            lucy_runtime = runtime_for(lucy, project_root, config)
             lucy_boot = format_boot_message(
                 "lucy",
                 mode="implement",
@@ -277,40 +271,73 @@ def run_code(
                 mode_name,
             )
             with Spinner(f"[code r{round_num}] Lucy 实现中") as spinner:
-                lucy_runtime.call_noninteractive(lucy_boot, cwd=project_root, timeout_sec=1800)
+                lucy_result = lucy_runtime.call_noninteractive(
+                    lucy_boot, cwd=project_root, timeout_sec=1800
+                )
             lucy_elapsed_sec = spinner.elapsed_sec
         else:
             lucy_elapsed_sec = None
-        lucy_meta = validate_artifact(
-            lucy_path,
-            [
-                "artifact",
-                "round",
-                "status",
-                "addresses",
-                "vcs_mode",
-                "commit_sha",
-                "snapshot_dir",
-                "files_changed",
-                "created_at",
-                "open_pushbacks",
-            ],
-        )
+        with (
+            lucy_timer.step("validate_artifact_ms")
+            if lucy_elapsed_sec is not None
+            else nullcontext()
+        ):
+            lucy_meta = validate_artifact(
+                lucy_path,
+                [
+                    "artifact",
+                    "round",
+                    "status",
+                    "addresses",
+                    "vcs_mode",
+                    "commit_sha",
+                    "snapshot_dir",
+                    "files_changed",
+                    "created_at",
+                    "open_pushbacks",
+                ],
+            )
+        files_changed = _normalize_files_changed(lucy_meta.get("files_changed"))
+        with (
+            lucy_timer.step("vcs_post_round_ms") if lucy_elapsed_sec is not None else nullcontext()
+        ):
+            vcs_result = vcs_handler.post_round(
+                round_num=round_num,
+                files_changed=files_changed,
+                summary=f"lucy round {round_num}",
+                prefix=f"[take-root code r{round_num}]",
+            )
+        vcs_metadata = _resolved_vcs_metadata(lucy_meta, vcs_result)
         if lucy_elapsed_sec is not None:
+            lucy_timings = compose_timings(
+                wall_sec=lucy_elapsed_sec,
+                runtime_timings=aggregate_runtime_timings(
+                    [lucy_result.timings] if lucy_result is not None else []
+                ),
+                phase_breakdown_ms=lucy_timer.breakdown_ms,
+            )
+            inject_timings_into_artifact(lucy_path, lucy_timings)
+            append_perf_record(
+                project_root,
+                "code",
+                build_perf_record(
+                    phase="code",
+                    round_num=round_num,
+                    persona="lucy",
+                    runtime=lucy_resolved.runtime_name,
+                    model=lucy_resolved.resolved_model,
+                    effort=lucy_resolved.effort,
+                    artifact=_relative(lucy_path, project_root),
+                    timings=lucy_timings,
+                ),
+            )
             render_artifact_summary(
                 lucy_path,
                 persona="lucy",
                 elapsed_sec=lucy_elapsed_sec,
                 runtime_tag=lucy_tag,
+                timings=lucy_timings,
             )
-        files_changed = _normalize_files_changed(lucy_meta.get("files_changed"))
-        vcs_result = vcs_handler.post_round(
-            round_num=round_num,
-            files_changed=files_changed,
-            summary=f"lucy round {round_num}",
-            prefix=f"[take-root code r{round_num}]",
-        )
-        vcs_metadata = _resolved_vcs_metadata(lucy_meta, vcs_result)
         current_round: dict[str, Any] = {
             "n": round_num,
             "lucy_path": _relative(lucy_path, project_root),
@@ -319,6 +346,7 @@ def run_code(
             "snapshot_dir": vcs_metadata["snapshot_dir"],
         }
         peter_tag = ""
+        peter_timings: dict[str, Any] | None = None
 
         if not peter_path.exists():
             peter_resolved = resolve_persona_runtime_config(config, peter.name)
@@ -337,7 +365,7 @@ def run_code(
                 output=Path(_relative(peter_path, project_root)),
                 runtime_tag=peter_tag,
             )
-            peter_runtime = _runtime_for(peter, project_root, config)
+            peter_runtime = runtime_for(peter, project_root, config)
             review_range = _review_range(mode_name, rounds, current_round)
             peter_boot_kwargs: dict[str, Any] = {
                 "mode": "review_round",
@@ -370,6 +398,8 @@ def run_code(
                 review_range,
             )
             with Spinner(f"[code r{round_num}] Peter 评审中") as spinner:
+                peter_timer = PhaseTimer()
+                peter_runtime_results: list[RuntimeCallResult] = []
                 peter_meta = _call_noninteractive_with_artifact_retry(
                     runtime=peter_runtime,
                     boot_message=peter_boot,
@@ -386,13 +416,38 @@ def run_code(
                         "open_findings",
                         "created_at",
                     ],
+                    timer=peter_timer,
+                    runtime_result_sink=peter_runtime_results,
                 )
             peter_elapsed_sec = spinner.elapsed_sec
+            peter_timings = compose_timings(
+                wall_sec=peter_elapsed_sec,
+                runtime_timings=aggregate_runtime_timings(
+                    [result.timings for result in peter_runtime_results]
+                ),
+                phase_breakdown_ms=peter_timer.breakdown_ms,
+            )
+            inject_timings_into_artifact(peter_path, peter_timings)
+            append_perf_record(
+                project_root,
+                "code",
+                build_perf_record(
+                    phase="code",
+                    round_num=round_num,
+                    persona="peter",
+                    runtime=peter_resolved.runtime_name,
+                    model=peter_resolved.resolved_model,
+                    effort=peter_resolved.effort,
+                    artifact=_relative(peter_path, project_root),
+                    timings=peter_timings,
+                ),
+            )
             render_artifact_summary(
                 peter_path,
                 persona="peter",
                 elapsed_sec=peter_elapsed_sec,
                 runtime_tag=peter_tag,
+                timings=peter_timings,
             )
         else:
             peter_meta = validate_artifact(

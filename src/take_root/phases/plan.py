@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from take_root.artifacts import artifact_path
-from take_root.config import TakeRootConfig, require_config, resolve_persona_runtime_config
+from take_root.config import require_config, resolve_persona_runtime_config
 from take_root.errors import ConfigError, PolicyError
 from take_root.guardrails import (
     WorkspaceSnapshot,
@@ -15,13 +16,20 @@ from take_root.guardrails import (
     snapshot_workspace,
     write_policy_violation_report,
 )
+from take_root.perf import (
+    PhaseTimer,
+    aggregate_runtime_timings,
+    append_perf_record,
+    build_perf_record,
+    compose_timings,
+    inject_timings_into_artifact,
+)
 from take_root.persona import Persona, find_harness_root, load_persona
 from take_root.phase_ui import announce_persona_call, build_runtime_tag, render_artifact_summary
 from take_root.phases import format_boot_message, validate_artifact
 from take_root.phases.init import run_init
-from take_root.runtimes.base import BaseRuntime, RuntimePolicy
-from take_root.runtimes.claude import ClaudeRuntime
-from take_root.runtimes.codex import CodexRuntime
+from take_root.runtimes import check_runtime_available, runtime_for
+from take_root.runtimes.base import BaseRuntime, RuntimeCallResult, RuntimePolicy
 from take_root.state import reconcile_state_from_disk, transition
 from take_root.summary import write_run_summary
 from take_root.ui import Spinner, ask, info, warn
@@ -33,29 +41,6 @@ MAX_PLAN_ROUNDS = 5
 class ReviewOnlyCallResult:
     snapshot: WorkspaceSnapshot
     call_error: Exception | None
-
-
-def _runtime_for(
-    persona: Persona,
-    project_root: Path,
-    config: TakeRootConfig,
-) -> BaseRuntime:
-    resolved_config = resolve_persona_runtime_config(config, persona.name)
-    if resolved_config.runtime_name == "claude":
-        return ClaudeRuntime(persona, project_root, resolved_config=resolved_config)
-    if resolved_config.runtime_name == "codex":
-        return CodexRuntime(persona, project_root, resolved_config=resolved_config)
-    raise ConfigError(f"Unsupported runtime: {resolved_config.runtime_name}")
-
-
-def _check_runtime_available(runtime_name: str) -> None:
-    if runtime_name == "claude":
-        ClaudeRuntime.check_available()
-        return
-    if runtime_name == "codex":
-        CodexRuntime.check_available()
-        return
-    raise ConfigError(f"Unsupported runtime: {runtime_name}")
 
 
 def _is_claude_stale(project_root: Path) -> bool:
@@ -145,38 +130,45 @@ def _call_review_only_persona(
     output_path: Path,
     context_files: list[Path],
     timeout_sec: int,
+    timer: PhaseTimer | None = None,
+    runtime_result_sink: list[RuntimeCallResult] | None = None,
 ) -> ReviewOnlyCallResult:
-    scan_review_context(context_files)
-    snapshot = snapshot_workspace(project_root, output_path)
+    with timer.step("scan_review_context_ms") if timer else nullcontext():
+        scan_review_context(context_files)
+    with timer.step("snapshot_workspace_ms") if timer else nullcontext():
+        snapshot = snapshot_workspace(project_root, output_path)
     call_error: Exception | None = None
     try:
-        runtime.call_noninteractive(
+        result = runtime.call_noninteractive(
             boot_message,
             cwd=project_root,
             timeout_sec=timeout_sec,
             policy=RuntimePolicy.review_only(output_path),
         )
+        if runtime_result_sink is not None:
+            runtime_result_sink.append(result)
     except Exception as exc:
         call_error = exc
-    changed_paths = snapshot.out_of_scope_changes()
-    if changed_paths:
-        sample = ", ".join(changed_paths[:8])
-        suffix = "" if len(changed_paths) <= 8 else f" ... (+{len(changed_paths) - 8} more)"
-        policy_error = PolicyError(
-            f"review_only policy violation: files outside output_path changed: {sample}{suffix}"
-        )
-        snapshot.restore_output_path()
-        report = write_policy_violation_report(
-            project_root=project_root,
-            persona_name=persona.name,
-            output_path=output_path,
-            details=str(policy_error),
-            changed_paths=changed_paths,
-        )
-        error = PolicyError(f"{policy_error} (evidence: {report})")
-        if call_error is None:
-            raise error
-        raise error from call_error
+    with timer.step("out_of_scope_check_ms") if timer else nullcontext():
+        changed_paths = snapshot.out_of_scope_changes()
+        if changed_paths:
+            sample = ", ".join(changed_paths[:8])
+            suffix = "" if len(changed_paths) <= 8 else f" ... (+{len(changed_paths) - 8} more)"
+            policy_error = PolicyError(
+                f"review_only policy violation: files outside output_path changed: {sample}{suffix}"
+            )
+            snapshot.restore_output_path()
+            report = write_policy_violation_report(
+                project_root=project_root,
+                persona_name=persona.name,
+                output_path=output_path,
+                details=str(policy_error),
+                changed_paths=changed_paths,
+            )
+            error = PolicyError(f"{policy_error} (evidence: {report})")
+            if call_error is None:
+                raise error
+            raise error from call_error
     return ReviewOnlyCallResult(snapshot=snapshot, call_error=call_error)
 
 
@@ -186,9 +178,11 @@ def _finalize_review_only_artifact(
     output_path: Path,
     validate: Callable[[], dict[str, Any]],
     persona_name: str,
+    timer: PhaseTimer | None = None,
 ) -> dict[str, Any]:
     try:
-        metadata = validate()
+        with timer.step("validate_artifact_ms") if timer else nullcontext():
+            metadata = validate()
     except Exception:
         result.snapshot.restore_output_path()
         raise
@@ -232,6 +226,8 @@ def _run_review_only_persona_with_validation(
     persona_name: str,
     artifact_contract: str,
     max_attempts: int = 2,
+    timer: PhaseTimer | None = None,
+    runtime_result_sink: list[RuntimeCallResult] | None = None,
 ) -> dict[str, Any]:
     current_boot = boot_message
     for attempt in range(1, max_attempts + 1):
@@ -243,6 +239,8 @@ def _run_review_only_persona_with_validation(
             output_path=output_path,
             context_files=context_files,
             timeout_sec=timeout_sec,
+            timer=timer,
+            runtime_result_sink=runtime_result_sink,
         )
         try:
             return _finalize_review_only_artifact(
@@ -250,6 +248,7 @@ def _run_review_only_persona_with_validation(
                 output_path=output_path,
                 validate=validate,
                 persona_name=persona_name,
+                timer=timer,
             )
         except Exception as exc:
             if attempt >= max_attempts:
@@ -334,7 +333,7 @@ def run_plan(
     robin = load_persona("robin", project_root, harness_root=harness_root)
     neo = load_persona("neo", project_root, harness_root=harness_root)
     for persona in (jeff, robin, neo):
-        _check_runtime_available(resolve_persona_runtime_config(config, persona.name).runtime_name)
+        check_runtime_available(resolve_persona_runtime_config(config, persona.name).runtime_name)
 
     plan_dir = project_root / ".take_root" / "plan"
     jeff_path = plan_dir / "jeff_proposal.md"
@@ -342,7 +341,7 @@ def run_plan(
 
     if not jeff_path.exists():
         info("[plan] Jeff 交互阶段开始")
-        jeff_runtime = _runtime_for(jeff, project_root, config)
+        jeff_runtime = runtime_for(jeff, project_root, config)
         boot = format_boot_message(
             "jeff",
             project_root=str(project_root.resolve()),
@@ -401,7 +400,7 @@ def run_plan(
                 output=Path(_relative(robin_path, project_root)),
                 runtime_tag=robin_tag,
             )
-            robin_runtime = _runtime_for(robin, project_root, config)
+            robin_runtime = runtime_for(robin, project_root, config)
             robin_boot = format_boot_message(
                 "robin",
                 mode="review_round",
@@ -414,6 +413,8 @@ def run_plan(
                 output_path=str(robin_path.resolve()),
             )
             with Spinner(f"[plan r{round_num}] Robin 评审中") as spinner:
+                robin_timer = PhaseTimer()
+                robin_runtime_results: list[RuntimeCallResult] = []
                 robin_meta = _run_review_only_persona_with_validation(
                     runtime=robin_runtime,
                     persona=robin,
@@ -442,12 +443,37 @@ def run_plan(
                     ),
                     persona_name="robin",
                     artifact_contract=_robin_artifact_contract(round_num),
+                    timer=robin_timer,
+                    runtime_result_sink=robin_runtime_results,
                 )
+            robin_timings = compose_timings(
+                wall_sec=spinner.elapsed_sec,
+                runtime_timings=aggregate_runtime_timings(
+                    [result.timings for result in robin_runtime_results]
+                ),
+                phase_breakdown_ms=robin_timer.breakdown_ms,
+            )
+            inject_timings_into_artifact(robin_path, robin_timings)
+            append_perf_record(
+                project_root,
+                "plan",
+                build_perf_record(
+                    phase="plan",
+                    round_num=round_num,
+                    persona="robin",
+                    runtime=robin_resolved.runtime_name,
+                    model=robin_resolved.resolved_model,
+                    effort=robin_resolved.effort,
+                    artifact=_relative(robin_path, project_root),
+                    timings=robin_timings,
+                ),
+            )
             render_artifact_summary(
                 robin_path,
                 persona="robin",
                 elapsed_sec=spinner.elapsed_sec,
                 runtime_tag=robin_tag,
+                timings=robin_timings,
             )
         else:
             robin_meta = validate_artifact(
@@ -472,7 +498,7 @@ def run_plan(
                 output=Path(_relative(neo_path, project_root)),
                 runtime_tag=neo_tag,
             )
-            neo_runtime = _runtime_for(neo, project_root, config)
+            neo_runtime = runtime_for(neo, project_root, config)
             neo_boot = format_boot_message(
                 "neo",
                 mode="review_round",
@@ -485,6 +511,8 @@ def run_plan(
                 output_path=str(neo_path.resolve()),
             )
             with Spinner(f"[plan r{round_num}] Neo 攻防评审中") as spinner:
+                neo_timer = PhaseTimer()
+                neo_runtime_results: list[RuntimeCallResult] = []
                 neo_meta = _run_review_only_persona_with_validation(
                     runtime=neo_runtime,
                     persona=neo,
@@ -513,12 +541,37 @@ def run_plan(
                     ),
                     persona_name="neo",
                     artifact_contract=_neo_artifact_contract(round_num),
+                    timer=neo_timer,
+                    runtime_result_sink=neo_runtime_results,
                 )
+            neo_timings = compose_timings(
+                wall_sec=spinner.elapsed_sec,
+                runtime_timings=aggregate_runtime_timings(
+                    [result.timings for result in neo_runtime_results]
+                ),
+                phase_breakdown_ms=neo_timer.breakdown_ms,
+            )
+            inject_timings_into_artifact(neo_path, neo_timings)
+            append_perf_record(
+                project_root,
+                "plan",
+                build_perf_record(
+                    phase="plan",
+                    round_num=round_num,
+                    persona="neo",
+                    runtime=neo_resolved.runtime_name,
+                    model=neo_resolved.resolved_model,
+                    effort=neo_resolved.effort,
+                    artifact=_relative(neo_path, project_root),
+                    timings=neo_timings,
+                ),
+            )
             render_artifact_summary(
                 neo_path,
                 persona="neo",
                 elapsed_sec=spinner.elapsed_sec,
                 runtime_tag=neo_tag,
+                timings=neo_timings,
             )
         else:
             neo_meta = validate_artifact(
@@ -574,7 +627,7 @@ def run_plan(
             output=Path(_relative(final_plan, project_root)),
             runtime_tag=robin_tag,
         )
-        robin_runtime = _runtime_for(robin, project_root, config)
+        robin_runtime = runtime_for(robin, project_root, config)
         rounds_used = len(rounds)
         finalize_boot = format_boot_message(
             "robin",
@@ -590,6 +643,8 @@ def run_plan(
             output_path=str(final_plan.resolve()),
         )
         with Spinner("[plan] Robin 最终方案收敛输出中") as spinner:
+            finalize_timer = PhaseTimer()
+            finalize_runtime_results: list[RuntimeCallResult] = []
             _run_review_only_persona_with_validation(
                 runtime=robin_runtime,
                 persona=robin,
@@ -624,12 +679,37 @@ def run_plan(
                 ),
                 persona_name="robin",
                 artifact_contract=_final_plan_artifact_contract(),
+                timer=finalize_timer,
+                runtime_result_sink=finalize_runtime_results,
             )
+        finalize_timings = compose_timings(
+            wall_sec=spinner.elapsed_sec,
+            runtime_timings=aggregate_runtime_timings(
+                [result.timings for result in finalize_runtime_results]
+            ),
+            phase_breakdown_ms=finalize_timer.breakdown_ms,
+        )
+        inject_timings_into_artifact(final_plan, finalize_timings)
+        append_perf_record(
+            project_root,
+            "plan",
+            build_perf_record(
+                phase="plan",
+                round_num=rounds_used,
+                persona="robin",
+                runtime=robin_resolved.runtime_name,
+                model=robin_resolved.resolved_model,
+                effort=robin_resolved.effort,
+                artifact=_relative(final_plan, project_root),
+                timings=finalize_timings,
+            ),
+        )
         render_artifact_summary(
             final_plan,
             persona="robin",
             elapsed_sec=spinner.elapsed_sec,
             runtime_tag=robin_tag,
+            timings=finalize_timings,
         )
     else:
         validate_artifact(

@@ -1,0 +1,59 @@
+schema_version: 1
+providers:
+  claude_official:
+    kind: claude_official
+    default_models:
+      opus: claude-opus-4-6
+      sonnet: claude-sonnet-4-6
+      haiku: claude-haiku-4-5-20251001
+  codex_official:
+    kind: codex_official
+    default_models:
+      opus: gpt-5.4
+      sonnet: gpt-5.4-mini
+      haiku: gpt-5.4-mini
+  qwen:
+    kind: anthropic_compatible
+    base_url: https://dashscope.aliyuncs.com/apps/anthropic
+    auth_token_env: ANTHROPIC_AUTH_TOKEN_QWEN
+    default_models:
+      opus: qwen3-max
+      sonnet: qwen3.6-plus
+      haiku: qwen3.5-flash
+  kimi:
+    kind: anthropic_compatible
+    base_url: https://api.moonshot.cn/anthropic
+    auth_token_env: ANTHROPIC_AUTH_TOKEN_KIMI
+    default_models:
+      opus: kimi-k2.5
+      sonnet: kimi-k2.5
+      haiku: kimi-k2.5
+init:
+  provider: claude_official
+  model: opus
+  effort: medium
+personas:
+  jeff:
+    provider: qwen
+    model: sonnet
+    effort: medium
+  robin:
+    provider: qwen
+    model: opus
+    effort: high
+  neo:
+    provider: kimi
+    model: sonnet
+    effort: high
+  lucy:
+    provider: codex_official
+    model: opus
+    effort: high
+  peter:
+    provider: codex_official
+    model: opus
+    effort: high
+  amy:
+    provider: codex_official
+    model: sonnet
+    effort: medium

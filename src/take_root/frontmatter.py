@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -49,3 +50,15 @@ def serialize_frontmatter(metadata: dict[str, Any], body: str) -> str:
 def read_frontmatter_file(path: Path) -> ParsedFrontmatter:
     """Read and parse a frontmatter markdown file."""
     return parse_frontmatter(path.read_text(encoding="utf-8"))
+
+
+def write_frontmatter_file(path: Path, metadata: dict[str, Any], body: str) -> None:
+    """Write frontmatter markdown atomically."""
+    payload = serialize_frontmatter(metadata, body)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    with tmp_path.open("w", encoding="utf-8") as handle:
+        handle.write(payload)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(tmp_path, path)

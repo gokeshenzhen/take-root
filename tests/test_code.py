@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from take_root.config import default_take_root_config, save_config
+from take_root.frontmatter import read_frontmatter_file
 from take_root.phases.code import _resolved_vcs_metadata, run_code
 from take_root.runtimes.base import RuntimeCallResult
 from take_root.state import load_or_create_state, transition
@@ -173,7 +175,7 @@ def test_run_code_resumes_partial_round_with_peter_review_first(
         },
     )
     calls: list[Path] = []
-    monkeypatch.setattr("take_root.phases.code._check_runtime_available", lambda _: None)
+    monkeypatch.setattr("take_root.phases.code.check_runtime_available", lambda _: None)
     runtimes: dict[str, _FakeRuntime] = {}
 
     def _fake_runtime_for(persona, project_root, config):
@@ -182,7 +184,7 @@ def test_run_code_resumes_partial_round_with_peter_review_first(
         runtimes[persona.name] = runtime
         return runtime
 
-    monkeypatch.setattr("take_root.phases.code._runtime_for", _fake_runtime_for)
+    monkeypatch.setattr("take_root.phases.code.runtime_for", _fake_runtime_for)
 
     state = run_code(tmp_path, vcs_mode="off", max_rounds=2)
 
@@ -191,9 +193,20 @@ def test_run_code_resumes_partial_round_with_peter_review_first(
     assert state["phases"]["code"]["rounds"][0]["peter_path"] == ".take_root/code/peter_r1.md"
     assert runtimes["peter"].policies[0] is not None
     assert runtimes["peter"].policies[0].mode == "review_only"
-    assert runtimes["peter"].policies[0].output_path == (
-        tmp_path / ".take_root" / "code" / "peter_r1.md"
-    ).resolve()
+    assert (
+        runtimes["peter"].policies[0].output_path
+        == (tmp_path / ".take_root" / "code" / "peter_r1.md").resolve()
+    )
+    peter_meta = read_frontmatter_file(tmp_path / ".take_root" / "code" / "peter_r1.md").metadata
+    assert "timings" in peter_meta
+    perf_lines = (
+        (tmp_path / ".take_root" / "perf" / "code.jsonl")
+        .read_text(encoding="utf-8")
+        .strip()
+        .splitlines()
+    )
+    assert len(perf_lines) == 1
+    assert isinstance(json.loads(perf_lines[0]), dict)
 
 
 def test_run_code_retries_missing_peter_artifact_once(monkeypatch, tmp_path: Path) -> None:
@@ -225,7 +238,7 @@ def test_run_code_retries_missing_peter_artifact_once(monkeypatch, tmp_path: Pat
         },
     )
     calls: list[Path] = []
-    monkeypatch.setattr("take_root.phases.code._check_runtime_available", lambda _: None)
+    monkeypatch.setattr("take_root.phases.code.check_runtime_available", lambda _: None)
     runtimes: dict[str, _FakeRuntime] = {}
 
     def _fake_runtime_for(persona, project_root, config):
@@ -238,7 +251,7 @@ def test_run_code_retries_missing_peter_artifact_once(monkeypatch, tmp_path: Pat
         runtimes[persona.name] = runtime
         return runtime
 
-    monkeypatch.setattr("take_root.phases.code._runtime_for", _fake_runtime_for)
+    monkeypatch.setattr("take_root.phases.code.runtime_for", _fake_runtime_for)
 
     state = run_code(tmp_path, vcs_mode="off", max_rounds=2)
 
@@ -249,8 +262,7 @@ def test_run_code_retries_missing_peter_artifact_once(monkeypatch, tmp_path: Pat
     assert state["phases"]["code"]["status"] == "done"
     assert (tmp_path / ".take_root" / "code" / "peter_r1.md").exists()
     assert all(
-        policy is not None and policy.mode == "review_only"
-        for policy in runtimes["peter"].policies
+        policy is not None and policy.mode == "review_only" for policy in runtimes["peter"].policies
     )
 
 
@@ -282,9 +294,9 @@ def test_run_code_prints_rich_phase_output(
         },
     )
     calls: list[Path] = []
-    monkeypatch.setattr("take_root.phases.code._check_runtime_available", lambda _: None)
+    monkeypatch.setattr("take_root.phases.code.check_runtime_available", lambda _: None)
     monkeypatch.setattr(
-        "take_root.phases.code._runtime_for",
+        "take_root.phases.code.runtime_for",
         lambda persona, project_root, config: _FakeRuntime(persona.name, calls),
     )
 

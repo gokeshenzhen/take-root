@@ -1,43 +1,28 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
 from take_root.artifacts import artifact_path
-from take_root.config import TakeRootConfig, require_config, resolve_persona_runtime_config
+from take_root.config import require_config, resolve_persona_runtime_config
 from take_root.errors import ArtifactError, ConfigError
-from take_root.persona import Persona, find_harness_root, load_persona
+from take_root.perf import (
+    PhaseTimer,
+    aggregate_runtime_timings,
+    append_perf_record,
+    build_perf_record,
+    compose_timings,
+    inject_timings_into_artifact,
+)
+from take_root.persona import find_harness_root, load_persona
 from take_root.phase_ui import announce_persona_call, build_runtime_tag, render_artifact_summary
 from take_root.phases import format_boot_message, validate_artifact
-from take_root.runtimes.base import BaseRuntime
-from take_root.runtimes.claude import ClaudeRuntime
-from take_root.runtimes.codex import CodexRuntime
+from take_root.runtimes import check_runtime_available, runtime_for
+from take_root.runtimes.base import RuntimeCallResult
 from take_root.state import reconcile_state_from_disk, transition
 from take_root.summary import write_run_summary
 from take_root.ui import Spinner, ask, info
-
-
-def _runtime_for(
-    persona: Persona,
-    project_root: Path,
-    config: TakeRootConfig,
-) -> BaseRuntime:
-    resolved_config = resolve_persona_runtime_config(config, persona.name)
-    if resolved_config.runtime_name == "claude":
-        return ClaudeRuntime(persona, project_root, resolved_config=resolved_config)
-    if resolved_config.runtime_name == "codex":
-        return CodexRuntime(persona, project_root, resolved_config=resolved_config)
-    raise ConfigError(f"Unsupported runtime: {resolved_config.runtime_name}")
-
-
-def _check_runtime_available(runtime_name: str) -> None:
-    if runtime_name == "claude":
-        ClaudeRuntime.check_available()
-        return
-    if runtime_name == "codex":
-        CodexRuntime.check_available()
-        return
-    raise ConfigError(f"Unsupported runtime: {runtime_name}")
 
 
 def _relative(path: Path, project_root: Path) -> str:
@@ -92,7 +77,7 @@ def run_test(
     amy = load_persona("amy", project_root, harness_root=harness_root)
     lucy = load_persona("lucy", project_root, harness_root=harness_root)
     for persona in (amy, lucy):
-        _check_runtime_available(resolve_persona_runtime_config(config, persona.name).runtime_name)
+        check_runtime_available(resolve_persona_runtime_config(config, persona.name).runtime_name)
 
     final_plan = project_root / ".take_root" / "plan" / "final_plan.md"
     if not final_plan.exists():
@@ -122,6 +107,8 @@ def run_test(
         )
         amy_elapsed_sec: float | None = None
         amy_tag = ""
+        amy_timer = PhaseTimer()
+        amy_result: RuntimeCallResult | None = None
 
         if not amy_path.exists():
             amy_resolved = resolve_persona_runtime_config(config, amy.name)
@@ -140,7 +127,7 @@ def run_test(
                 output=Path(_relative(amy_path, project_root)),
                 runtime_tag=amy_tag,
             )
-            amy_runtime = _runtime_for(amy, project_root, config)
+            amy_runtime = runtime_for(amy, project_root, config)
             amy_boot = format_boot_message(
                 "amy",
                 mode="test",
@@ -156,29 +143,57 @@ def run_test(
                 vcs_mode=vcs_mode,
             )
             with Spinner(f"[test it{iteration}] Amy 全量测试中") as spinner:
-                amy_runtime.call_noninteractive(amy_boot, cwd=project_root, timeout_sec=3600)
+                amy_result = amy_runtime.call_noninteractive(
+                    amy_boot, cwd=project_root, timeout_sec=3600
+                )
             amy_elapsed_sec = spinner.elapsed_sec
         else:
             amy_elapsed_sec = None
-        amy_meta = validate_artifact(
-            amy_path,
-            [
-                "artifact",
-                "iteration",
-                "status",
-                "test_command",
-                "tested_commit",
-                "counts",
-                "duration_sec",
-                "created_at",
-            ],
-        )
+        with (
+            amy_timer.step("validate_artifact_ms") if amy_elapsed_sec is not None else nullcontext()
+        ):
+            amy_meta = validate_artifact(
+                amy_path,
+                [
+                    "artifact",
+                    "iteration",
+                    "status",
+                    "test_command",
+                    "tested_commit",
+                    "counts",
+                    "duration_sec",
+                    "created_at",
+                ],
+            )
         if amy_elapsed_sec is not None:
+            amy_timings = compose_timings(
+                wall_sec=amy_elapsed_sec,
+                runtime_timings=aggregate_runtime_timings(
+                    [amy_result.timings] if amy_result is not None else []
+                ),
+                phase_breakdown_ms=amy_timer.breakdown_ms,
+            )
+            inject_timings_into_artifact(amy_path, amy_timings)
+            append_perf_record(
+                project_root,
+                "test",
+                build_perf_record(
+                    phase="test",
+                    round_num=iteration,
+                    persona="amy",
+                    runtime=amy_resolved.runtime_name,
+                    model=amy_resolved.resolved_model,
+                    effort=amy_resolved.effort,
+                    artifact=_relative(amy_path, project_root),
+                    timings=amy_timings,
+                ),
+            )
             render_artifact_summary(
                 amy_path,
                 persona="amy",
                 elapsed_sec=amy_elapsed_sec,
                 runtime_tag=amy_tag,
+                timings=amy_timings,
             )
         item: dict[str, Any] = {
             "n": iteration,
@@ -207,6 +222,8 @@ def run_test(
 
         lucy_elapsed_sec: float | None = None
         lucy_tag = ""
+        lucy_timer = PhaseTimer()
+        lucy_result: RuntimeCallResult | None = None
         if not lucy_fix_path.exists():
             lucy_resolved = resolve_persona_runtime_config(config, lucy.name)
             lucy_tag = build_runtime_tag(lucy_resolved)
@@ -227,7 +244,7 @@ def run_test(
                 output=Path(_relative(lucy_fix_path, project_root)),
                 runtime_tag=lucy_tag,
             )
-            lucy_runtime = _runtime_for(lucy, project_root, config)
+            lucy_runtime = runtime_for(lucy, project_root, config)
             lucy_boot = format_boot_message(
                 "lucy",
                 mode="fix",
@@ -248,31 +265,61 @@ def run_test(
                 ),
             )
             with Spinner(f"[test it{iteration}] Lucy 修复中") as spinner:
-                lucy_runtime.call_noninteractive(lucy_boot, cwd=project_root, timeout_sec=1800)
+                lucy_result = lucy_runtime.call_noninteractive(
+                    lucy_boot, cwd=project_root, timeout_sec=1800
+                )
             lucy_elapsed_sec = spinner.elapsed_sec
         else:
             lucy_elapsed_sec = None
-        lucy_meta = validate_artifact(
-            lucy_fix_path,
-            [
-                "artifact",
-                "iteration",
-                "addresses",
-                "vcs_mode",
-                "commit_sha",
-                "snapshot_dir",
-                "files_changed",
-                "failures_addressed",
-                "failures_deferred",
-                "created_at",
-            ],
-        )
+        with (
+            lucy_timer.step("validate_artifact_ms")
+            if lucy_elapsed_sec is not None
+            else nullcontext()
+        ):
+            lucy_meta = validate_artifact(
+                lucy_fix_path,
+                [
+                    "artifact",
+                    "iteration",
+                    "addresses",
+                    "vcs_mode",
+                    "commit_sha",
+                    "snapshot_dir",
+                    "files_changed",
+                    "failures_addressed",
+                    "failures_deferred",
+                    "created_at",
+                ],
+            )
         if lucy_elapsed_sec is not None:
+            lucy_timings = compose_timings(
+                wall_sec=lucy_elapsed_sec,
+                runtime_timings=aggregate_runtime_timings(
+                    [lucy_result.timings] if lucy_result is not None else []
+                ),
+                phase_breakdown_ms=lucy_timer.breakdown_ms,
+            )
+            inject_timings_into_artifact(lucy_fix_path, lucy_timings)
+            append_perf_record(
+                project_root,
+                "test",
+                build_perf_record(
+                    phase="test",
+                    round_num=iteration,
+                    persona="lucy",
+                    runtime=lucy_resolved.runtime_name,
+                    model=lucy_resolved.resolved_model,
+                    effort=lucy_resolved.effort,
+                    artifact=_relative(lucy_fix_path, project_root),
+                    timings=lucy_timings,
+                ),
+            )
             render_artifact_summary(
                 lucy_fix_path,
                 persona="lucy",
                 elapsed_sec=lucy_elapsed_sec,
                 runtime_tag=lucy_tag,
+                timings=lucy_timings,
             )
         item["lucy_fix_path"] = _relative(lucy_fix_path, project_root)
         item["failures_addressed"] = lucy_meta["failures_addressed"]

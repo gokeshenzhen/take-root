@@ -6,7 +6,7 @@ import re
 import subprocess
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -35,6 +35,7 @@ class RuntimeCallResult:
     stdout: str
     stderr: str
     duration_sec: float
+    timings: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,9 +163,12 @@ class BaseRuntime(ABC):
         timeout_sec: int,
         env: dict[str, str] | None = None,
     ) -> RuntimeCallResult:
+        setup_started = time.monotonic()
+        total_backoff_sec = 0.0
         attempt = 0
         while True:
-            started = time.monotonic()
+            setup_ms = int((time.monotonic() - setup_started) * 1000)
+            subprocess_started = time.monotonic()
             self._log_runtime_start(cmd, cwd, timeout_sec, env)
             try:
                 completed = subprocess.run(
@@ -197,15 +201,23 @@ class BaseRuntime(ABC):
                     _preview_text(partial_stderr),
                 )
                 raise RuntimeCallError(f"timeout after {timeout_sec}s") from exc
-            duration = time.monotonic() - started
+            subprocess_sec = time.monotonic() - subprocess_started
+            teardown_started = time.monotonic()
             result = RuntimeCallResult(
                 exit_code=completed.returncode,
                 stdout=completed.stdout,
                 stderr=completed.stderr,
-                duration_sec=duration,
+                duration_sec=subprocess_sec,
+                timings={
+                    "setup_ms": setup_ms,
+                    "subprocess_ms": int(subprocess_sec * 1000),
+                    "teardown_ms": 0,
+                    "retry_backoff_ms": int(total_backoff_sec * 1000),
+                },
             )
             self._log_runtime_result(result)
             if result.exit_code == 0:
+                result.timings["teardown_ms"] = int((time.monotonic() - teardown_started) * 1000)
                 return result
             if attempt >= self.config.retries or not self._is_transient_error(result.stderr):
                 tail = result.stderr[-2048:]
@@ -215,8 +227,10 @@ class BaseRuntime(ABC):
             delay = self.config.retry_backoff_sec[
                 min(attempt, len(self.config.retry_backoff_sec) - 1)
             ]
+            total_backoff_sec += delay
             time.sleep(delay)
             attempt += 1
+            setup_started = time.monotonic()
 
     def _legacy_model(self) -> str | None:
         value = self.persona.raw_frontmatter.get("model")
