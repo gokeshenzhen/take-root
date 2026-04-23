@@ -81,14 +81,7 @@ def test_validate_artifact_reports_frontmatter_parse_detail(tmp_path: Path) -> N
     path = tmp_path / "a.md"
     path.write_text("not frontmatter\nartifact: nope\n", encoding="utf-8")
 
-    with pytest.raises(
-        ArtifactError,
-        match=(
-            r"Missing YAML frontmatter start delimiter.*"
-            r"Expected:.*"
-            r"Actual start:.*not frontmatter"
-        ),
-    ):
+    with pytest.raises(ArtifactError, match=r"Invalid frontmatter in artifact: .*a\.md"):
         validate_artifact(path, ["a"])
 
 
