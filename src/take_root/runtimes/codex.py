@@ -8,8 +8,6 @@ from pathlib import Path
 from take_root.errors import ConfigError, RuntimeCallError
 from take_root.runtimes.base import BaseRuntime, RuntimeCallResult, RuntimePolicy
 
-CODEX_REASONING_ALLOWED = {"minimal", "low", "medium", "high"}
-
 
 def _as_toml_string(value: str) -> str:
     # JSON string literal is TOML-compatible for basic strings.
@@ -85,14 +83,12 @@ class CodexRuntime(BaseRuntime):
             else self._legacy_reasoning()
         )
         if raw_effort:
-            effort = raw_effort.lower()
-            if effort in CODEX_REASONING_ALLOWED:
-                cmd.extend(
-                    [
-                        "-c",
-                        f"model_reasoning_effort={_as_toml_string(effort)}",
-                    ]
-                )
+            cmd.extend(
+                [
+                    "-c",
+                    f"model_reasoning_effort={_as_toml_string(raw_effort)}",
+                ]
+            )
         return cmd
 
     def call_interactive(

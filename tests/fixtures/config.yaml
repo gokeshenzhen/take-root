@@ -3,7 +3,7 @@ providers:
   claude_official:
     kind: claude_official
     default_models:
-      opus: claude-opus-4-6
+      opus: claude-opus-4-7
       sonnet: claude-sonnet-4-6
       haiku: claude-haiku-4-5-20251001
   codex_official:
@@ -40,19 +40,19 @@ personas:
   robin:
     provider: qwen
     model: opus
-    effort: high
+    effort: xhigh
   neo:
     provider: kimi
     model: sonnet
-    effort: high
+    effort: xhigh
   lucy:
     provider: codex_official
     model: opus
-    effort: high
+    effort: xhigh
   peter:
     provider: codex_official
     model: opus
-    effort: high
+    effort: xhigh
   amy:
     provider: codex_official
     model: sonnet

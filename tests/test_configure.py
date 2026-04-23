@@ -5,13 +5,20 @@ from pathlib import Path
 import pytest
 
 from take_root.config import (
+    ActorRouteConfig,
     ProviderConfig,
     default_take_root_config,
     load_config,
     save_config,
 )
 from take_root.errors import ConfigError
-from take_root.phases.configure import _prompt_api_key, _prompt_model, _select_option, run_configure
+from take_root.phases.configure import (
+    _prompt_api_key,
+    _prompt_model,
+    _prompt_route,
+    _select_option,
+    run_configure,
+)
 
 
 def test_select_option_returns_default_on_enter(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -44,7 +51,7 @@ def test_run_configure_uses_numbered_selections(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     save_config(tmp_path, default_take_root_config())
-    selections = iter(["codex_official", "gpt-5.4", "minimal"])
+    selections = iter(["codex_official", "gpt-5.4", "xhigh (Extra high)"])
     monkeypatch.setattr(
         "take_root.phases.configure.select_option",
         lambda prompt, options, default: next(selections),
@@ -53,7 +60,7 @@ def test_run_configure_uses_numbered_selections(
     config = load_config(tmp_path)
     assert config.init.provider == "codex_official"
     assert config.init.model == "gpt-5.4"
-    assert config.init.effort == "minimal"
+    assert config.init.effort == "xhigh"
 
 
 def test_run_configure_keeps_existing_api_key_on_enter(
@@ -126,3 +133,101 @@ def test_run_configure_invalid_section_raises_config_error(tmp_path: Path) -> No
     save_config(tmp_path, default_take_root_config())
     with pytest.raises(ConfigError):
         run_configure(tmp_path, section="invalid")
+
+
+def test_run_configure_effort_options_follow_codex_provider_kind(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    save_config(tmp_path, default_take_root_config())
+    effort_options: list[str] = []
+
+    def _fake_select(prompt: str, options: list[str], default: str) -> str:
+        if prompt == "选择 provider":
+            return "codex_official"
+        if prompt == "选择 effort":
+            effort_options.extend(options)
+        return default
+
+    monkeypatch.setattr("take_root.phases.configure.select_option", _fake_select)
+    run_configure(tmp_path, section="init")
+    assert effort_options == ["low", "medium", "high", "xhigh (Extra high)"]
+
+
+def test_run_configure_effort_options_follow_claude_provider_kind(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    save_config(tmp_path, default_take_root_config())
+    effort_options: list[str] = []
+
+    def _fake_select(prompt: str, options: list[str], default: str) -> str:
+        if prompt == "选择 provider":
+            return "qwen"
+        if prompt == "选择 effort":
+            effort_options.extend(options)
+        return default
+
+    monkeypatch.setattr("take_root.phases.configure.select_option", _fake_select)
+    run_configure(tmp_path, section="init")
+    assert effort_options == ["low", "medium", "high", "xhigh (Extra high)", "max"]
+
+
+def test_prompt_route_repicks_effort_when_switching_to_codex(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = default_take_root_config()
+    prompts: list[tuple[str, list[str], str]] = []
+    notices: list[str] = []
+
+    def _fake_select(prompt: str, options: list[str], default: str) -> str:
+        prompts.append((prompt, options, default))
+        if prompt == "选择 provider":
+            return "codex_official"
+        return default
+
+    monkeypatch.setattr("take_root.phases.configure.select_option", _fake_select)
+    monkeypatch.setattr("take_root.phases.configure.info", notices.append)
+    route = _prompt_route(
+        "lucy",
+        ActorRouteConfig(provider="claude_official", model="opus", effort="max"),
+        config.providers,
+        list(config.providers),
+        allow_codex=True,
+    )
+
+    effort_prompt = next(call for call in prompts if call[0] == "选择 effort")
+    assert effort_prompt[1] == ["low", "medium", "high", "xhigh (Extra high)"]
+    assert effort_prompt[2] == "medium"
+    assert any("不支持之前的 effort" in notice for notice in notices)
+    assert route.provider == "codex_official"
+    assert route.effort == "medium"
+
+
+def test_prompt_route_keeps_existing_effort_when_switching_to_codex_if_still_supported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = default_take_root_config()
+    prompts: list[tuple[str, list[str], str]] = []
+    notices: list[str] = []
+
+    def _fake_select(prompt: str, options: list[str], default: str) -> str:
+        prompts.append((prompt, options, default))
+        if prompt == "选择 provider":
+            return "codex_official"
+        return default
+
+    monkeypatch.setattr("take_root.phases.configure.select_option", _fake_select)
+    monkeypatch.setattr("take_root.phases.configure.info", notices.append)
+    route = _prompt_route(
+        "lucy",
+        ActorRouteConfig(provider="claude_official", model="opus", effort="high"),
+        config.providers,
+        list(config.providers),
+        allow_codex=True,
+    )
+
+    effort_prompt = next(call for call in prompts if call[0] == "选择 effort")
+    assert effort_prompt[1] == ["low", "medium", "high", "xhigh (Extra high)"]
+    assert effort_prompt[2] == "high"
+    assert not any("不支持之前的 effort" in notice for notice in notices)
+    assert route.provider == "codex_official"
+    assert route.effort == "high"

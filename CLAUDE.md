@@ -332,7 +332,7 @@ Built-in providers:
 Built-in default models:
 
 - `claude_official`
-  - `opus -> claude-opus-4-6`
+  - `opus -> claude-opus-4-7`
   - `sonnet -> claude-sonnet-4-6`
   - `haiku -> claude-haiku-4-5-20251001`
 - `codex_official`
@@ -350,10 +350,10 @@ Built-in persona route defaults:
 
 - `init -> claude_official / opus / medium`
 - `jeff -> qwen / sonnet / medium`
-- `robin -> qwen / opus / high`
-- `neo -> kimi / sonnet / high`
-- `lucy -> codex_official / opus / high`
-- `peter -> codex_official / opus / high`
+- `robin -> qwen / opus / xhigh`
+- `neo -> kimi / sonnet / xhigh`
+- `lucy -> codex_official / opus / xhigh`
+- `peter -> codex_official / opus / xhigh`
 - `amy -> codex_official / sonnet / medium`
 
 Model selectors may be aliases:
@@ -364,10 +364,25 @@ Model selectors may be aliases:
 
 Supported effort values:
 
-- `minimal`
-- `low`
-- `medium`
-- `high`
+- `claude_official`
+  - `low`
+  - `medium`
+  - `high`
+  - `xhigh`
+  - `max`
+- `anthropic_compatible`
+  - `low`
+  - `medium`
+  - `high`
+  - `xhigh`
+  - `max`
+- `codex_official`
+  - `low`
+  - `medium`
+  - `high`
+  - `xhigh`
+
+`minimal` 已移除。
 
 Anthropic-compatible env handling:
 
@@ -429,8 +444,7 @@ Claude wrapper:
 - non-interactive uses `claude -p`
 - interactive uses `claude <boot_message>`
 - system prompt passed via `--append-system-prompt`
-- effort mapping is lossy:
-  - `minimal -> low`
+- effort passed through verbatim via `--effort <value>`
 - review-only mode constrains tools to read tools plus `Write(output_path)`
 
 Codex wrapper:
@@ -438,7 +452,7 @@ Codex wrapper:
 - non-interactive uses `codex exec --skip-git-repo-check`
 - interactive uses `codex`
 - system prompt injected via `-c developer_instructions=...`
-- effort injected via `-c model_reasoning_effort=...`
+- effort passed through verbatim via `-c model_reasoning_effort=<value>`
 - review-only mode uses:
   - `--sandbox read-only`
   - `--output-last-message <output_path>`

@@ -142,7 +142,7 @@ def test_claude_runtime_builds_expected_command(
         resolved_config=_resolved_config(
             runtime_name="claude",
             model="qwen3.6-plus",
-            effort="minimal",
+            effort="max",
         ),
     )
     runtime.call_noninteractive("BOOT", tmp_path, timeout_sec=123)
@@ -152,7 +152,7 @@ def test_claude_runtime_builds_expected_command(
     assert "--model" in cmd
     assert "--effort" in cmd
     assert "qwen3.6-plus" in cmd
-    assert "low" in cmd
+    assert "max" in cmd
 
 
 def test_claude_runtime_review_only_policy_builds_restricted_command(
@@ -215,7 +215,7 @@ def test_codex_runtime_builds_expected_command(
         resolved_config=_resolved_config(
             runtime_name="codex",
             model="gpt-5.4",
-            effort="high",
+            effort="xhigh",
         ),
     )
     runtime.call_noninteractive("BOOT", tmp_path, timeout_sec=321)
@@ -224,7 +224,7 @@ def test_codex_runtime_builds_expected_command(
     assert "-m" in cmd
     assert "BOOT" == cmd[-1]
     assert any(item.startswith("developer_instructions=") for item in cmd)
-    assert any(item.startswith("model_reasoning_effort=") for item in cmd)
+    assert 'model_reasoning_effort="xhigh"' in cmd
 
 
 def test_codex_runtime_review_only_policy_routes_last_message_to_output(
@@ -250,7 +250,7 @@ def test_codex_runtime_review_only_policy_routes_last_message_to_output(
         resolved_config=_resolved_config(
             runtime_name="codex",
             model="gpt-5.4",
-            effort="high",
+            effort="xhigh",
         ),
     )
     output_path = tmp_path / "artifact.md"
@@ -285,7 +285,7 @@ def test_codex_runtime_interactive_builds_expected_command(
         resolved_config=_resolved_config(
             runtime_name="codex",
             model="gpt-5.4",
-            effort="high",
+            effort="xhigh",
         ),
     )
     result = runtime.call_interactive("BOOT", tmp_path)
@@ -293,6 +293,7 @@ def test_codex_runtime_interactive_builds_expected_command(
     assert cmd[0] == "codex"
     assert "exec" not in cmd
     assert "-m" in cmd
+    assert 'model_reasoning_effort="xhigh"' in cmd
     assert "BOOT" == cmd[-1]
     assert result.exit_code == 0
 

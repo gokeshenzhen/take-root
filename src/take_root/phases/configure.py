@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from take_root.config import (
+    EFFORT_VALUES_BY_KIND,
     PERSONA_NAMES,
     ActorRouteConfig,
     ProviderConfig,
@@ -27,6 +28,7 @@ CODEX_MODEL_CHOICES = [
 ]
 QWEN_MODEL_CHOICES = ["qwen3-max", "qwen3.6-plus", "qwen3.5-flash"]
 KIMI_MODEL_CHOICES = ["kimi-k2.5"]
+EFFORT_DISPLAY_LABELS = {"xhigh": "xhigh (Extra high)"}
 
 
 def _select_option(prompt: str, options: list[str], default: str) -> str:
@@ -67,6 +69,33 @@ def _default_model_for_provider(provider_name: str, provider: ProviderConfig) ->
     if defaults:
         return "sonnet"
     return ""
+
+
+def _display_effort(effort: str) -> str:
+    return EFFORT_DISPLAY_LABELS.get(effort, effort)
+
+
+def _effort_options_for_provider(provider: ProviderConfig) -> tuple[str, ...]:
+    return EFFORT_VALUES_BY_KIND[provider.kind]
+
+
+def _prompt_effort(
+    route: ActorRouteConfig,
+    provider_name: str,
+    provider: ProviderConfig,
+    *,
+    provider_changed: bool,
+) -> str:
+    effort_options = _effort_options_for_provider(provider)
+    if provider_changed and route.effort not in effort_options:
+        info(f"{provider_name} 不支持之前的 effort，正在重新选择。")
+    effort_default = route.effort if route.effort in effort_options else "medium"
+    if effort_default not in effort_options:
+        effort_default = effort_options[0]
+    labels = [_display_effort(effort) for effort in effort_options]
+    effort_by_label = dict(zip(labels, effort_options, strict=True))
+    selected_label = _select_option("选择 effort", labels, _display_effort(effort_default))
+    return effort_by_label[selected_label]
 
 
 def _prompt_model(
@@ -229,9 +258,14 @@ def _prompt_route(
         if provider != route.provider:
             model_default = _default_model_for_provider(provider, selected_provider)
     model = _prompt_model(provider, model_hint=model_hint, model_default=model_default)
-    effort_options = ["minimal", "low", "medium", "high"]
-    effort_default = route.effort if route.effort in effort_options else "medium"
-    effort = _select_option("选择 effort", effort_options, effort_default)
+    if selected_provider is None:
+        raise ConfigError(f"未找到 provider: {provider}")
+    effort = _prompt_effort(
+        route,
+        provider,
+        selected_provider,
+        provider_changed=provider != route.provider,
+    )
     return ActorRouteConfig(provider=provider, model=model, effort=effort)
 
 

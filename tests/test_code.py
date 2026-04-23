@@ -305,4 +305,4 @@ def test_run_code_prints_rich_phase_output(
     captured = capsys.readouterr()
     assert "[code r1] Lucy 实现中" in captured.err
     assert "lucy_r1  status=converged  pushbacks=0  commit=-  files=0" in captured.err
-    assert "peter_r1  (gpt-5.4 · high) ── converged · 0 open" in captured.err
+    assert "peter_r1  (gpt-5.4 · xhigh) ── converged · 0 open" in captured.err

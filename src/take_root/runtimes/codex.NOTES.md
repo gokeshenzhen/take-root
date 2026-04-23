@@ -16,4 +16,4 @@ Final invocation format used by `CodexRuntime`:
 Rationale:
 
 - `developer_instructions` injects persona prompt as a dedicated higher-priority instruction block.
-- `model_reasoning_effort` is passed via config override because this CLI version does not expose a direct flag.
+- `model_reasoning_effort` is passed through verbatim via config override because this CLI version does not expose a direct flag.

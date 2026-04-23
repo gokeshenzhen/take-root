@@ -13,7 +13,11 @@ from take_root.errors import ConfigError
 CONFIG_SCHEMA_VERSION = 1
 MODEL_ALIASES = ("opus", "sonnet", "haiku")
 VALID_PROVIDER_KINDS = {"claude_official", "codex_official", "anthropic_compatible"}
-VALID_EFFORTS = {"minimal", "low", "medium", "high"}
+EFFORT_VALUES_BY_KIND: dict[str, tuple[str, ...]] = {
+    "claude_official": ("low", "medium", "high", "xhigh", "max"),
+    "anthropic_compatible": ("low", "medium", "high", "xhigh", "max"),
+    "codex_official": ("low", "medium", "high", "xhigh"),
+}
 PERSONA_NAMES = ("jeff", "robin", "neo", "lucy", "peter", "amy")
 ANTHROPIC_ENV_KEYS = (
     "ANTHROPIC_BASE_URL",
@@ -25,7 +29,7 @@ ANTHROPIC_ENV_KEYS = (
     "ANTHROPIC_DEFAULT_HAIKU_MODEL",
 )
 CLAUDE_OFFICIAL_DEFAULT_MODELS = {
-    "opus": "claude-opus-4-6",
+    "opus": "claude-opus-4-7",
     "sonnet": "claude-sonnet-4-6",
     "haiku": "claude-haiku-4-5-20251001",
 }
@@ -117,10 +121,10 @@ def default_take_root_config() -> TakeRootConfig:
     }
     personas = {
         "jeff": ActorRouteConfig(provider="qwen", model="sonnet", effort="medium"),
-        "robin": ActorRouteConfig(provider="qwen", model="opus", effort="high"),
-        "neo": ActorRouteConfig(provider="kimi", model="sonnet", effort="high"),
-        "lucy": ActorRouteConfig(provider="codex_official", model="opus", effort="high"),
-        "peter": ActorRouteConfig(provider="codex_official", model="opus", effort="high"),
+        "robin": ActorRouteConfig(provider="qwen", model="opus", effort="xhigh"),
+        "neo": ActorRouteConfig(provider="kimi", model="sonnet", effort="xhigh"),
+        "lucy": ActorRouteConfig(provider="codex_official", model="opus", effort="xhigh"),
+        "peter": ActorRouteConfig(provider="codex_official", model="opus", effort="xhigh"),
         "amy": ActorRouteConfig(provider="codex_official", model="sonnet", effort="medium"),
     }
     return TakeRootConfig(
@@ -210,9 +214,30 @@ def _load_actor_route(raw: Any, label: str) -> ActorRouteConfig:
     provider = _require_string(data.get("provider"), f"{label}.provider")
     model = _require_string(data.get("model"), f"{label}.model")
     effort = _optional_string(data.get("effort"), f"{label}.effort")
-    if effort is not None and effort not in VALID_EFFORTS:
-        raise ConfigError(f"{label}.effort 不支持: {effort}")
     return ActorRouteConfig(provider=provider, model=model, effort=effort)
+
+
+# Defense-in-depth: load_config() validates disk-backed configs early, and this
+# re-validates configs constructed or mutated in memory before resolve_* uses them.
+def _validate_route_effort(
+    route: ActorRouteConfig,
+    providers: dict[str, ProviderConfig],
+    *,
+    label: str,
+) -> None:
+    provider = providers.get(route.provider)
+    if provider is None:
+        raise ConfigError(f"{label} 指向了不存在的 provider: {route.provider}")
+    allowed_efforts = EFFORT_VALUES_BY_KIND.get(provider.kind)
+    if allowed_efforts is None:
+        raise ConfigError(f"{label} 使用了未知 provider 类型: {provider.kind}")
+    if route.effort is None or route.effort in allowed_efforts:
+        return
+    allowed_text = ", ".join(allowed_efforts)
+    raise ConfigError(
+        f"{label}.effort 对 provider {route.provider} ({provider.kind}) 不支持: "
+        f"{route.effort}；允许值: {allowed_text}。请执行 `take-root configure` 更新配置"
+    )
 
 
 def load_config(project_root: Path) -> TakeRootConfig:
@@ -229,10 +254,13 @@ def load_config(project_root: Path) -> TakeRootConfig:
     raw_providers = _require_mapping(data.get("providers"), "providers")
     providers = {name: _load_provider(name, value) for name, value in raw_providers.items()}
     init_config = _load_actor_route(data.get("init"), "init")
+    _validate_route_effort(init_config, providers, label="init")
     raw_personas = _require_mapping(data.get("personas"), "personas")
     personas = {
         name: _load_actor_route(value, f"personas.{name}") for name, value in raw_personas.items()
     }
+    for name, route in personas.items():
+        _validate_route_effort(route, providers, label=f"personas.{name}")
     return TakeRootConfig(
         schema_version=CONFIG_SCHEMA_VERSION,
         providers=providers,
@@ -285,6 +313,7 @@ def _resolve_actor_route(
     route: ActorRouteConfig,
     label: str,
 ) -> ResolvedRuntimeConfig:
+    _validate_route_effort(route, config.providers, label=label)
     provider = config.providers.get(route.provider)
     if provider is None:
         raise ConfigError(f"{label} 指向了不存在的 provider: {route.provider}")

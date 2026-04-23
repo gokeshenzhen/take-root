@@ -61,7 +61,7 @@ def test_spinner_emits_single_line_on_non_tty(monkeypatch: pytest.MonkeyPatch) -
 def test_build_runtime_tag_uses_resolved_model() -> None:
     resolved = resolve_persona_runtime_config(default_take_root_config(), "lucy")
 
-    assert build_runtime_tag(resolved) == "gpt-5.4 · high"
+    assert build_runtime_tag(resolved) == "gpt-5.4 · xhigh"
 
 
 def test_build_runtime_tag_reflects_configured_persona() -> None:

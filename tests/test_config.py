@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from take_root.config import (
+    CLAUDE_OFFICIAL_DEFAULT_MODELS,
     ActorRouteConfig,
     ProviderConfig,
     TakeRootConfig,
@@ -55,7 +56,7 @@ def test_resolve_persona_runtime_config_alias_for_claude_official(tmp_path: Path
     config = TakeRootConfig(
         schema_version=config.schema_version,
         providers=config.providers,
-        init=ActorRouteConfig(provider="claude_official", model="sonnet", effort="medium"),
+        init=ActorRouteConfig(provider="claude_official", model="opus", effort="medium"),
         personas=config.personas,
     )
     resolved = resolve_persona_runtime_config(
@@ -67,14 +68,14 @@ def test_resolve_persona_runtime_config_alias_for_claude_official(tmp_path: Path
                 **config.personas,
                 "jeff": ActorRouteConfig(
                     provider="claude_official",
-                    model="sonnet",
+                    model="opus",
                     effort="medium",
                 ),
             },
         ),
         "jeff",
     )
-    assert resolved.resolved_model == "claude-sonnet-4-6"
+    assert resolved.resolved_model == "claude-opus-4-7"
 
 
 def test_resolve_persona_runtime_config_missing_token_raises(tmp_path: Path) -> None:
@@ -178,3 +179,50 @@ def test_resolve_persona_runtime_config_rejects_non_kimi_k25(
     )
     with pytest.raises(ConfigError):
         resolve_persona_runtime_config(config, "neo")
+
+
+def test_default_take_root_config_uses_upgraded_effort_defaults() -> None:
+    config = default_take_root_config()
+    assert CLAUDE_OFFICIAL_DEFAULT_MODELS["opus"] == "claude-opus-4-7"
+    assert config.personas["robin"].effort == "xhigh"
+    assert config.personas["neo"].effort == "xhigh"
+    assert config.personas["lucy"].effort == "xhigh"
+    assert config.personas["peter"].effort == "xhigh"
+
+
+def test_load_config_rejects_minimal_effort_with_configure_hint(tmp_path: Path) -> None:
+    path = tmp_path / ".take_root" / "config.yaml"
+    save_config(tmp_path, default_take_root_config())
+    text = path.read_text(encoding="utf-8").replace("effort: medium", "effort: minimal", 1)
+    path.write_text(text, encoding="utf-8")
+
+    with pytest.raises(ConfigError, match=r"take-root configure"):
+        load_config(tmp_path)
+
+
+def test_load_config_rejects_codex_max_effort_with_allowed_values(tmp_path: Path) -> None:
+    config = default_take_root_config()
+    config = TakeRootConfig(
+        schema_version=config.schema_version,
+        providers=config.providers,
+        init=ActorRouteConfig(provider="codex_official", model="opus", effort="max"),
+        personas=config.personas,
+    )
+    save_config(tmp_path, config)
+
+    with pytest.raises(ConfigError, match=r"low, medium, high, xhigh"):
+        load_config(tmp_path)
+
+
+def test_load_config_allows_claude_max_effort(tmp_path: Path) -> None:
+    config = default_take_root_config()
+    config = TakeRootConfig(
+        schema_version=config.schema_version,
+        providers=config.providers,
+        init=ActorRouteConfig(provider="claude_official", model="opus", effort="max"),
+        personas=config.personas,
+    )
+    save_config(tmp_path, config)
+
+    loaded = load_config(tmp_path)
+    assert loaded.init.effort == "max"

@@ -7,13 +7,6 @@ from pathlib import Path
 from take_root.errors import ConfigError, RuntimeCallError
 from take_root.runtimes.base import BaseRuntime, RuntimeCallResult, RuntimePolicy
 
-CLAUDE_REASONING_MAP = {
-    "minimal": "low",  # SPEC-GAP: Claude CLI offers low/medium/high/max only.
-    "low": "low",
-    "medium": "medium",
-    "high": "high",
-}
-
 
 class ClaudeRuntime(BaseRuntime):
     @classmethod
@@ -47,9 +40,7 @@ class ClaudeRuntime(BaseRuntime):
             else self._legacy_reasoning()
         )
         if raw_effort:
-            effort = CLAUDE_REASONING_MAP.get(raw_effort.lower())
-            if effort:
-                args.extend(["--effort", effort])
+            args.extend(["--effort", raw_effort])
         if policy is not None and policy.mode == "review_only":
             if policy.output_path is None:
                 raise ConfigError("review_only policy requires output_path")

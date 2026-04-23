@@ -7,16 +7,15 @@ Verified with local CLI:
   - non-interactive mode: `-p/--print`
   - system prompt append: `--append-system-prompt`
   - model selection: `--model`
-  - reasoning level: `--effort (low|medium|high|max)`
+  - reasoning level: `--effort (low|medium|high|xhigh|max)`
 
 Final invocation formats used by `ClaudeRuntime`:
 
 - Non-interactive:
-  - `claude -p "<boot_message>" --append-system-prompt "<persona.system_prompt>" --model <persona.model> [--effort <mapped>]`
+  - `claude -p "<boot_message>" --append-system-prompt "<persona.system_prompt>" --model <persona.model> [--effort <value>]`
 - Interactive:
-  - `claude "<boot_message>" --append-system-prompt "<persona.system_prompt>" --model <persona.model> [--effort <mapped>]`
+  - `claude "<boot_message>" --append-system-prompt "<persona.system_prompt>" --model <persona.model> [--effort <value>]`
 
 Reasoning mapping:
 
-- persona `minimal` -> claude `low`
-- `low/medium/high` passthrough
+- `low/medium/high/xhigh/max` passthrough
