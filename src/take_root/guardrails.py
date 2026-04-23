@@ -33,7 +33,13 @@ _SUSPICIOUS_LINE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ),
 )
 
-_REVIEW_ONLY_IGNORED_PREFIXES = (".take_root/doctor/",)
+# These paths are owned by the harness itself, so incidental refreshes must not
+# invalidate a review-only persona artifact.
+_REVIEW_ONLY_IGNORED_PREFIXES = (
+    ".take_root/doctor/",
+    ".take_root/state.json",
+    ".take_root/run_summary.md",
+)
 
 
 @dataclass(frozen=True, slots=True)
