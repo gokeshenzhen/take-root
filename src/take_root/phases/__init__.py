@@ -13,6 +13,8 @@ LOGGER = logging.getLogger(__name__)
 
 BOOT_WARN_BYTES = 8 * 1024
 BOOT_ABORT_BYTES = 32 * 1024
+FRONTMATTER_PREVIEW_CHARS = 400
+FRONTMATTER_PREVIEW_LINES = 12
 
 
 def _format_scalar(value: Any) -> str:
@@ -56,13 +58,36 @@ def validate_artifact(path: Path, required_keys: list[str]) -> dict[str, Any]:
     try:
         parsed = read_frontmatter_file(path)
     except FrontmatterError as exc:
-        raise ArtifactError(f"Invalid frontmatter in artifact: {path}") from exc
+        raise ArtifactError(
+            f"Invalid frontmatter in artifact: {path}: {exc}. "
+            f"Expected: {_expected_frontmatter_shape()}. "
+            f"Actual start: {_artifact_preview(path)}"
+        ) from exc
     metadata = parsed.metadata
     missing = [key for key in required_keys if key not in metadata]
     if missing:
         raise ArtifactError(f"Artifact missing required keys {missing}: {path}")
     _validate_artifact_structure(path, metadata, parsed.body)
     return metadata
+
+
+def _expected_frontmatter_shape() -> str:
+    return json.dumps("---\\nkey: value\\n---\\n<body>")
+
+
+def _artifact_preview(path: Path) -> str:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return f"<unreadable: {exc}>"
+    normalized = text.replace("\r\n", "\n")
+    lines = normalized.splitlines()
+    preview = "\n".join(lines[:FRONTMATTER_PREVIEW_LINES])
+    if len(preview) > FRONTMATTER_PREVIEW_CHARS:
+        preview = preview[:FRONTMATTER_PREVIEW_CHARS] + "...(truncated)"
+    elif len(lines) > FRONTMATTER_PREVIEW_LINES or len(normalized) > len(preview):
+        preview += "\n...(truncated)"
+    return json.dumps(preview)
 
 
 def _validate_artifact_structure(path: Path, metadata: dict[str, Any], body: str) -> None:

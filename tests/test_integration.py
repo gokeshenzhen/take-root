@@ -57,7 +57,7 @@ def test_plan_phase_with_mocked_runtimes(monkeypatch: pytest.MonkeyPatch, tmp_pa
     (tmp_path / "CLAUDE.md").write_text("# ctx\n", encoding="utf-8")
     (tmp_path / "AGENTS.md").symlink_to("CLAUDE.md")
     (tmp_path / ".take_root" / "plan").mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr("take_root.phases.plan.ClaudeRuntime.check_available", lambda: None)
+    monkeypatch.setattr("take_root.phases.plan.check_runtime_available", lambda _: None)
     monkeypatch.setattr("take_root.phases.plan._maybe_refresh_claude_md", lambda project_root: None)
 
     class FakeRuntime:

@@ -77,6 +77,21 @@ def test_validate_artifact_missing_required(tmp_path: Path) -> None:
         validate_artifact(path, ["a", "b"])
 
 
+def test_validate_artifact_reports_frontmatter_parse_detail(tmp_path: Path) -> None:
+    path = tmp_path / "a.md"
+    path.write_text("not frontmatter\nartifact: nope\n", encoding="utf-8")
+
+    with pytest.raises(
+        ArtifactError,
+        match=(
+            r"Missing YAML frontmatter start delimiter.*"
+            r"Expected:.*"
+            r"Actual start:.*not frontmatter"
+        ),
+    ):
+        validate_artifact(path, ["a"])
+
+
 def test_validate_robin_review_requires_convergence_section(tmp_path: Path) -> None:
     path = tmp_path / "robin_r2.md"
     path.write_text(
