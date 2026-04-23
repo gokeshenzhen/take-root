@@ -344,7 +344,7 @@ Built-in default models:
   - `sonnet -> qwen3.6-plus`
   - `haiku -> qwen3.5-flash`
 - `kimi`
-  - `opus/sonnet/haiku -> kimi-k2.5`
+  - `opus/sonnet/haiku -> kimi-k2.6`
 
 Built-in persona route defaults:
 
@@ -503,7 +503,7 @@ Derived from source and tooling:
 7. Persona parsing accepts legacy singular `output_artifact` because `jeff.md` still uses it.
 8. Config schema and state schema are separate and both strictly validated. Both are currently version `1`.
 9. Anthropic-compatible providers deliberately clear inherited anthropic env vars before injecting resolved values.
-10. `kimi` is hard-restricted to `kimi-k2.5`; other resolved model names raise `ConfigError`.
+10. `kimi` is hard-restricted to `kimi-k2.6`; other resolved model names raise `ConfigError`.
 11. `doctor` can perform a real runtime call unless `--no-call` is set. It writes report/env/stdout/stderr files under `.take_root/doctor/`.
 12. `resume` ignores prior CLI tuning. It resumes with hardcoded defaults: plan `max_rounds=5`, code `vcs_mode=auto`, test `max_iterations=5`, `escalate=auto`.
 13. Plan review rounds are enforced as review-only. Guardrails snapshot the workspace, block suspicious review context lines, and reject out-of-scope file changes.

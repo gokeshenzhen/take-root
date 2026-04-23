@@ -27,7 +27,7 @@ CODEX_MODEL_CHOICES = [
     "gpt-5.1-codex-mini",
 ]
 QWEN_MODEL_CHOICES = ["qwen3-max", "qwen3.6-plus", "qwen3.5-flash"]
-KIMI_MODEL_CHOICES = ["kimi-k2.5"]
+KIMI_MODEL_CHOICES = ["kimi-k2.6"]
 EFFORT_DISPLAY_LABELS = {"xhigh": "xhigh (Extra high)"}
 
 

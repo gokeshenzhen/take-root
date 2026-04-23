@@ -90,9 +90,9 @@ def test_run_configure_keeps_existing_api_key_on_enter(
             "qwen3-max",
             "qwen3.6-plus",
             "qwen3.5-flash",
-            "kimi-k2.5",
-            "kimi-k2.5",
-            "kimi-k2.5",
+            "kimi-k2.6",
+            "kimi-k2.6",
+            "kimi-k2.6",
             "no",
         ]
     )

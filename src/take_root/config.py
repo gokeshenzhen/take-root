@@ -44,9 +44,9 @@ QWEN_DEFAULT_MODELS = {
     "haiku": "qwen3.5-flash",
 }
 KIMI_DEFAULT_MODELS = {
-    "opus": "kimi-k2.5",
-    "sonnet": "kimi-k2.5",
-    "haiku": "kimi-k2.5",
+    "opus": "kimi-k2.6",
+    "sonnet": "kimi-k2.6",
+    "haiku": "kimi-k2.6",
 }
 
 
@@ -326,8 +326,8 @@ def _resolve_actor_route(
         resolved_model = defaults.get(selector, "")
         if not resolved_model:
             raise ConfigError(f"{label} 的 model alias 无法解析: {selector}")
-    if route.provider == "kimi" and resolved_model != "kimi-k2.5":
-        raise ConfigError(f"{label} 的 kimi 仅支持 kimi-k2.5，当前为: {resolved_model}")
+    if route.provider == "kimi" and resolved_model != "kimi-k2.6":
+        raise ConfigError(f"{label} 的 kimi 仅支持 kimi-k2.6，当前为: {resolved_model}")
     runtime_name = "claude"
     if provider.kind == "codex_official":
         runtime_name = "codex"

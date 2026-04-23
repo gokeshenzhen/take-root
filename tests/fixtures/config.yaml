@@ -25,9 +25,9 @@ providers:
     base_url: https://api.moonshot.cn/anthropic
     auth_token_env: ANTHROPIC_AUTH_TOKEN_KIMI
     default_models:
-      opus: kimi-k2.5
-      sonnet: kimi-k2.5
-      haiku: kimi-k2.5
+      opus: kimi-k2.6
+      sonnet: kimi-k2.6
+      haiku: kimi-k2.6
 init:
   provider: claude_official
   model: opus

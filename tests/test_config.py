@@ -163,7 +163,7 @@ def test_resolve_persona_runtime_config_uses_direct_api_key() -> None:
     assert resolved.env["ANTHROPIC_AUTH_TOKEN"] == "abcd1234token"
 
 
-def test_resolve_persona_runtime_config_rejects_non_kimi_k25(
+def test_resolve_persona_runtime_config_rejects_legacy_kimi_k25(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN_KIMI", "moonshot-token")
@@ -174,7 +174,7 @@ def test_resolve_persona_runtime_config_rejects_non_kimi_k25(
         init=config.init,
         personas={
             **config.personas,
-            "neo": ActorRouteConfig(provider="kimi", model="moonshot-v1-8k", effort="high"),
+            "neo": ActorRouteConfig(provider="kimi", model="kimi-k2.5", effort="high"),
         },
     )
     with pytest.raises(ConfigError):
