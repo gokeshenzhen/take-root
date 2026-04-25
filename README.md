@@ -1,6 +1,19 @@
-# take-root
+# 🌱 take-root
+
+<p align="center">
+  <strong>Python CLI harness：6 个 persona 协作，把想法推进到计划、实现和测试闭环</strong>
+</p>
+
+<p align="center">
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.11%2B-blue?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.11+"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
+  <img src="https://img.shields.io/badge/version-0.1.0-green?style=for-the-badge" alt="Version 0.1.0">
+  <img src="https://img.shields.io/badge/runtimes-claude%20%7C%20codex-orange?style=for-the-badge" alt="Runtimes">
+</p>
 
 `take-root` 是一个 Python CLI harness，用 6 个 persona（Jeff/Robin/Neo/Lucy/Peter/Amy）把想法推进到计划、实现和测试闭环。
+
+[安装](#安装) · [最小使用](#最小使用) · [交互流程](#交互流程框图) · [协作架构](#协作架构图) · [常用子命令](#常用子命令) · [开发验证](#开发验证)
 
 ## 安装
 
