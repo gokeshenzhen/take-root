@@ -1,6 +1,25 @@
-# take-root
+# 🌱 take-root
+
+<p align="center">
+  <strong>Python CLI harness: six personas collaborate to drive ideas through planning, implementation, and testing</strong>
+</p>
+
+<p align="center">
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.11%2B-blue?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.11+"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
+  <img src="https://img.shields.io/badge/version-0.1.0-green?style=for-the-badge" alt="Version 0.1.0">
+  <img src="https://img.shields.io/badge/runtimes-claude%20%7C%20codex-orange?style=for-the-badge" alt="Runtimes">
+</p>
 
 `take-root` is a Python CLI harness that drives ideas through planning, implementation, and testing using six personas: Jeff / Robin / Neo / Lucy / Peter / Amy.
+
+[Installation](#installation) · [Minimal Usage](#minimal-usage) · [Architecture](#architecture) · [Workflow](#workflow-diagram) · [Collaboration](#architecture-diagram) · [Subcommands](#common-subcommands) · [Dev Checks](#development-checks) · [WeChat](#wechat)
+
+## Architecture
+
+<p align="center">
+  <img src="assets/Arch.png" alt="take-root architecture" width="800">
+</p>
 
 ## Installation
 
@@ -209,3 +228,9 @@ python3.11 -m mypy --strict src/take_root
 ruff check .
 ruff format --check .
 ```
+
+## WeChat
+
+<p align="center">
+  <img src="assets/QR.png" alt="WeChat public account QR code" width="200">
+</p>
