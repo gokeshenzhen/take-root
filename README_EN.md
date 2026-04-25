@@ -1,7 +1,7 @@
 # 🌱 take-root
 
 <p align="center">
-  <strong>Python CLI harness: six personas collaborate to drive ideas through planning, implementation, and testing</strong>
+  <strong>Python CLI harness Agent: six personas collaborate to drive ideas through planning, implementation, and testing</strong>
 </p>
 
 <p align="center">
@@ -11,7 +11,7 @@
   <img src="https://img.shields.io/badge/runtimes-claude%20%7C%20codex-orange?style=for-the-badge" alt="Runtimes">
 </p>
 
-`take-root` is a Python CLI harness that drives ideas through planning, implementation, and testing using six personas: Jeff / Robin / Neo / Lucy / Peter / Amy.
+`take-root` is a Python CLI harness Agent that drives ideas through planning, implementation, and testing using six personas: Jeff / Robin / Neo / Lucy / Peter / Amy.
 
 [Installation](#installation) · [Minimal Usage](#minimal-usage) · [Architecture](#architecture) · [Workflow](#workflow-diagram) · [Collaboration](#architecture-diagram) · [Subcommands](#common-subcommands) · [Dev Checks](#development-checks) · [WeChat](#wechat)
 
