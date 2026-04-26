@@ -1,0 +1,22 @@
+<svg width="1080" height="432" viewBox="0 0 1080 432" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1080" height="432" fill="#F3EFE6"/>
+  <rect x="68" y="58" width="944" height="316" rx="28" stroke="#D9D1C3" stroke-width="2"/>
+
+  <path d="M782 112C846 112 898 164 898 228C898 292 846 344 782 344" stroke="#284B3F" stroke-width="3"/>
+  <path d="M782 228H980" stroke="#284B3F" stroke-width="3"/>
+  <path d="M840 170L888 148" stroke="#284B3F" stroke-width="3" stroke-linecap="round"/>
+  <path d="M840 286L888 308" stroke="#284B3F" stroke-width="3" stroke-linecap="round"/>
+  <path d="M898 228L948 196" stroke="#284B3F" stroke-width="3" stroke-linecap="round"/>
+  <path d="M898 228L948 260" stroke="#284B3F" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="888" cy="148" r="5" fill="#C46A3A"/>
+  <circle cx="888" cy="308" r="5" fill="#C46A3A"/>
+  <circle cx="948" cy="196" r="5" fill="#C46A3A"/>
+  <circle cx="948" cy="260" r="5" fill="#C46A3A"/>
+  <circle cx="980" cy="228" r="5" fill="#C46A3A"/>
+
+  <text x="110" y="172" fill="#1D1D1B" font-family="'Noto Sans CJK SC', 'PingFang SC', sans-serif" font-size="28" letter-spacing="4">多角色工程化工作流</text>
+  <text x="108" y="248" fill="#1D1D1B" font-family="'Georgia', 'Times New Roman', serif" font-size="86" font-style="italic">take-root</text>
+  <text x="112" y="302" fill="#5A5A57" font-family="'Noto Sans CJK SC', 'PingFang SC', sans-serif" font-size="22" letter-spacing="1.5">configure → init → plan → code → test</text>
+
+  <line x1="110" y1="330" x2="242" y2="330" stroke="#C46A3A" stroke-width="4" stroke-linecap="round"/>
+</svg>
