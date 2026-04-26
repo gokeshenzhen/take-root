@@ -18,16 +18,21 @@ from take_root.ui import ask, info, select_option
 
 SECTION_CHOICES = {"providers", "init", "personas"}
 CODEX_MODEL_CHOICES = [
+    "gpt-5.5",
     "gpt-5.4",
-    "gpt-5.2-codex",
-    "gpt-5.1-codex-max",
     "gpt-5.4-mini",
     "gpt-5.3-codex",
     "gpt-5.2",
-    "gpt-5.1-codex-mini",
 ]
 QWEN_MODEL_CHOICES = ["qwen3-max", "qwen3.6-plus", "qwen3.5-flash"]
 KIMI_MODEL_CHOICES = ["kimi-k2.6"]
+DEEPSEEK_MODEL_CHOICES = ["deepseek-v4-pro[1m]", "deepseek-v4-flash"]
+BUILTIN_COMPATIBLE_PROVIDERS = ("qwen", "kimi", "deepseek")
+BUILTIN_MODEL_CHOICES = {
+    "qwen": QWEN_MODEL_CHOICES,
+    "kimi": KIMI_MODEL_CHOICES,
+    "deepseek": DEEPSEEK_MODEL_CHOICES,
+}
 EFFORT_DISPLAY_LABELS = {"xhigh": "xhigh (Extra high)"}
 
 
@@ -63,7 +68,7 @@ def _supported_model_text(provider_name: str, provider: ProviderConfig) -> str:
 def _default_model_for_provider(provider_name: str, provider: ProviderConfig) -> str:
     defaults = provider.default_models or {}
     if provider_name == "codex_official":
-        return defaults.get("opus", "gpt-5.4")
+        return defaults.get("opus", "gpt-5.5")
     if provider_name == "claude_official":
         return "opus"
     if defaults:
@@ -109,7 +114,7 @@ def _prompt_model(
             model_default if model_default in CODEX_MODEL_CHOICES else CODEX_MODEL_CHOICES[0]
         )
         return _select_option("选择 model", CODEX_MODEL_CHOICES, codex_default)
-    if provider_name in {"qwen", "kimi"}:
+    if provider_name in BUILTIN_COMPATIBLE_PROVIDERS:
         model_options = ["opus", "sonnet", "haiku"]
         model_default_for_select = model_default if model_default in model_options else "sonnet"
         return _select_option(
@@ -159,14 +164,14 @@ def _provider_prompt(name: str, provider: ProviderConfig) -> ProviderConfig:
         return ProviderConfig(kind="codex_official", default_models=provider.default_models)
     info(f"[configure] 配置 provider: {name}")
     defaults = provider.default_models or {}
-    if name in {"qwen", "kimi"}:
+    if name in BUILTIN_COMPATIBLE_PROVIDERS:
         configured_provider = _prompt_api_key(name, provider)
-        model_choices = QWEN_MODEL_CHOICES if name == "qwen" else None
+        model_choices = BUILTIN_MODEL_CHOICES[name]
         models = {
             alias: _select_option(
                 f"选择 default_models.{alias}",
                 _with_current_option(
-                    (model_choices if model_choices is not None else KIMI_MODEL_CHOICES),
+                    model_choices,
                     defaults.get(alias, ""),
                 ),
                 defaults.get(alias, ""),
@@ -217,20 +222,32 @@ def _prompt_custom_provider(current: dict[str, ProviderConfig]) -> dict[str, Pro
 
 def _prompt_providers(config: TakeRootConfig) -> dict[str, ProviderConfig]:
     updated = dict(config.providers)
+    defaults = default_take_root_config().providers
     updated["claude_official"] = _provider_prompt(
         "claude_official",
         updated.get("claude_official", ProviderConfig(kind="claude_official")),
     )
     updated["codex_official"] = _provider_prompt(
         "codex_official",
-        updated.get("codex_official", default_take_root_config().providers["codex_official"]),
+        updated.get("codex_official", defaults["codex_official"]),
     )
-    for name in ("qwen", "kimi"):
+    for name in BUILTIN_COMPATIBLE_PROVIDERS:
         updated[name] = _provider_prompt(
             name,
-            updated.get(name, default_take_root_config().providers[name]),
+            updated.get(name, defaults[name]),
         )
     return _prompt_custom_provider(updated)
+
+
+def _merge_missing_builtin_providers(config: TakeRootConfig) -> TakeRootConfig:
+    defaults = default_take_root_config()
+    providers = {**defaults.providers, **config.providers}
+    return TakeRootConfig(
+        schema_version=config.schema_version,
+        providers=providers,
+        init=config.init,
+        personas=config.personas,
+    )
 
 
 def _prompt_route(
@@ -302,7 +319,7 @@ def run_configure(
     if section is not None and section not in SECTION_CHOICES:
         raise ConfigError(f"unknown section: {section}")
     if config_exists(project_root) and not reset:
-        config = load_config(project_root)
+        config = _merge_missing_builtin_providers(load_config(project_root))
     else:
         config = default_take_root_config()
 

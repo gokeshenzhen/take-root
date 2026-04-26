@@ -51,7 +51,7 @@ def test_run_configure_uses_numbered_selections(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     save_config(tmp_path, default_take_root_config())
-    selections = iter(["codex_official", "gpt-5.4", "xhigh (Extra high)"])
+    selections = iter(["codex_official", "gpt-5.5", "xhigh (Extra high)"])
     monkeypatch.setattr(
         "take_root.phases.configure.select_option",
         lambda prompt, options, default: next(selections),
@@ -59,7 +59,7 @@ def test_run_configure_uses_numbered_selections(
     run_configure(tmp_path, section="init")
     config = load_config(tmp_path)
     assert config.init.provider == "codex_official"
-    assert config.init.model == "gpt-5.4"
+    assert config.init.model == "gpt-5.5"
     assert config.init.effort == "xhigh"
 
 
@@ -84,7 +84,7 @@ def test_run_configure_keeps_existing_api_key_on_enter(
         personas=config.personas,
     )
     save_config(tmp_path, config)
-    answers = iter(["", "kimi-key"])
+    answers = iter(["", "kimi-key", "deepseek-key"])
     selections = iter(
         [
             "qwen3-max",
@@ -93,6 +93,9 @@ def test_run_configure_keeps_existing_api_key_on_enter(
             "kimi-k2.6",
             "kimi-k2.6",
             "kimi-k2.6",
+            "deepseek-v4-pro[1m]",
+            "deepseek-v4-pro[1m]",
+            "deepseek-v4-flash",
             "no",
         ]
     )
@@ -107,6 +110,38 @@ def test_run_configure_keeps_existing_api_key_on_enter(
     run_configure(tmp_path, section="providers")
     loaded = load_config(tmp_path)
     assert loaded.providers["qwen"].auth_token == "saved-key"
+    assert loaded.providers["deepseek"].auth_token == "deepseek-key"
+
+
+def test_run_configure_personas_can_select_deepseek_from_legacy_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config = default_take_root_config()
+    legacy_providers = {
+        name: provider for name, provider in config.providers.items() if name != "deepseek"
+    }
+    save_config(
+        tmp_path,
+        config.__class__(
+            schema_version=config.schema_version,
+            providers=legacy_providers,
+            init=config.init,
+            personas=config.personas,
+        ),
+    )
+
+    def _fake_select(prompt: str, options: list[str], default: str) -> str:
+        if prompt == "选择 provider" and "deepseek" in options:
+            return "deepseek"
+        return default
+
+    monkeypatch.setattr("take_root.phases.configure.select_option", _fake_select)
+    run_configure(tmp_path, section="personas")
+
+    loaded = load_config(tmp_path)
+    assert loaded.providers["deepseek"].base_url == "https://api.deepseek.com/anthropic"
+    assert loaded.personas["jeff"].provider == "deepseek"
+    assert loaded.personas["amy"].provider == "deepseek"
 
 
 def test_prompt_model_allows_custom_model_for_claude_official(

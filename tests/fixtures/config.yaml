@@ -9,8 +9,8 @@ providers:
   codex_official:
     kind: codex_official
     default_models:
-      opus: gpt-5.4
-      sonnet: gpt-5.4-mini
+      opus: gpt-5.5
+      sonnet: gpt-5.4
       haiku: gpt-5.4-mini
   qwen:
     kind: anthropic_compatible

@@ -6,6 +6,7 @@ import pytest
 
 from take_root.config import (
     CLAUDE_OFFICIAL_DEFAULT_MODELS,
+    DEEPSEEK_DEFAULT_MODELS,
     ActorRouteConfig,
     ProviderConfig,
     TakeRootConfig,
@@ -46,7 +47,7 @@ def test_resolve_persona_runtime_config_clears_env_for_official(tmp_path: Path) 
     resolved = resolve_persona_runtime_config(config, "lucy")
     assert resolved.provider_name == "codex_official"
     assert resolved.runtime_name == "codex"
-    assert resolved.resolved_model == "gpt-5.4"
+    assert resolved.resolved_model == "gpt-5.5"
     assert resolved.env == {}
     assert "ANTHROPIC_AUTH_TOKEN" in resolved.cleared_env_vars
 
@@ -163,6 +164,33 @@ def test_resolve_persona_runtime_config_uses_direct_api_key() -> None:
     assert resolved.env["ANTHROPIC_AUTH_TOKEN"] == "abcd1234token"
 
 
+def test_resolve_persona_runtime_config_alias_for_deepseek(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN_DEEPSEEK", "deepseek-token")
+    config = default_take_root_config()
+    config = TakeRootConfig(
+        schema_version=config.schema_version,
+        providers=config.providers,
+        init=config.init,
+        personas={
+            **config.personas,
+            "amy": ActorRouteConfig(provider="deepseek", model="haiku", effort="medium"),
+        },
+    )
+
+    resolved = resolve_persona_runtime_config(config, "amy")
+
+    assert resolved.runtime_name == "claude"
+    assert resolved.provider_name == "deepseek"
+    assert resolved.base_url == "https://api.deepseek.com/anthropic"
+    assert resolved.resolved_model == "deepseek-v4-flash"
+    assert resolved.env["ANTHROPIC_AUTH_TOKEN"] == "deepseek-token"
+    assert resolved.env["ANTHROPIC_DEFAULT_OPUS_MODEL"] == "deepseek-v4-pro[1m]"
+    assert resolved.env["ANTHROPIC_DEFAULT_SONNET_MODEL"] == "deepseek-v4-pro[1m]"
+    assert resolved.env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] == "deepseek-v4-flash"
+
+
 def test_resolve_persona_runtime_config_rejects_legacy_kimi_k25(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -184,6 +212,14 @@ def test_resolve_persona_runtime_config_rejects_legacy_kimi_k25(
 def test_default_take_root_config_uses_upgraded_effort_defaults() -> None:
     config = default_take_root_config()
     assert CLAUDE_OFFICIAL_DEFAULT_MODELS["opus"] == "claude-opus-4-7"
+    assert config.providers["codex_official"].default_models == {
+        "opus": "gpt-5.5",
+        "sonnet": "gpt-5.4",
+        "haiku": "gpt-5.4-mini",
+    }
+    assert DEEPSEEK_DEFAULT_MODELS["opus"] == "deepseek-v4-pro[1m]"
+    assert config.providers["deepseek"].base_url == "https://api.deepseek.com/anthropic"
+    assert config.providers["deepseek"].auth_token_env == "ANTHROPIC_AUTH_TOKEN_DEEPSEEK"
     assert config.personas["robin"].effort == "xhigh"
     assert config.personas["neo"].effort == "xhigh"
     assert config.personas["lucy"].effort == "xhigh"

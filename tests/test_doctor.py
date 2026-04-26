@@ -124,7 +124,7 @@ def test_doctor_uses_codex_runtime_for_codex_provider(monkeypatch, tmp_path: Pat
 
     argv_text = (trace_dir / "codex_argv.txt").read_text(encoding="utf-8")
     assert "exec" in argv_text
-    assert "gpt-5.4" in argv_text
+    assert "gpt-5.5" in argv_text
 
 
 def test_doctor_supports_api_key_saved_in_config(monkeypatch, tmp_path: Path) -> None:

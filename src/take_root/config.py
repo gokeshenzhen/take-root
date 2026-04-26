@@ -34,8 +34,8 @@ CLAUDE_OFFICIAL_DEFAULT_MODELS = {
     "haiku": "claude-haiku-4-5-20251001",
 }
 CODEX_OFFICIAL_DEFAULT_MODELS = {
-    "opus": "gpt-5.4",
-    "sonnet": "gpt-5.4-mini",
+    "opus": "gpt-5.5",
+    "sonnet": "gpt-5.4",
     "haiku": "gpt-5.4-mini",
 }
 QWEN_DEFAULT_MODELS = {
@@ -47,6 +47,11 @@ KIMI_DEFAULT_MODELS = {
     "opus": "kimi-k2.6",
     "sonnet": "kimi-k2.6",
     "haiku": "kimi-k2.6",
+}
+DEEPSEEK_DEFAULT_MODELS = {
+    "opus": "deepseek-v4-pro[1m]",
+    "sonnet": "deepseek-v4-pro[1m]",
+    "haiku": "deepseek-v4-flash",
 }
 
 
@@ -117,6 +122,12 @@ def default_take_root_config() -> TakeRootConfig:
             base_url="https://api.moonshot.cn/anthropic",
             auth_token_env="ANTHROPIC_AUTH_TOKEN_KIMI",
             default_models=KIMI_DEFAULT_MODELS,
+        ),
+        "deepseek": ProviderConfig(
+            kind="anthropic_compatible",
+            base_url="https://api.deepseek.com/anthropic",
+            auth_token_env="ANTHROPIC_AUTH_TOKEN_DEEPSEEK",
+            default_models=DEEPSEEK_DEFAULT_MODELS,
         ),
     }
     personas = {

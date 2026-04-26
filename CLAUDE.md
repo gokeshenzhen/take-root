@@ -336,8 +336,8 @@ Built-in default models:
   - `sonnet -> claude-sonnet-4-6`
   - `haiku -> claude-haiku-4-5-20251001`
 - `codex_official`
-  - `opus -> gpt-5.4`
-  - `sonnet -> gpt-5.4-mini`
+  - `opus -> gpt-5.5`
+  - `sonnet -> gpt-5.4`
   - `haiku -> gpt-5.4-mini`
 - `qwen`
   - `opus -> qwen3-max`
