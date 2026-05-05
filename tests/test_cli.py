@@ -48,6 +48,17 @@ def test_parse_doctor_args() -> None:
     assert args.no_call is True
 
 
+def test_parse_doctor_claude_md_probe_project_after_subcommand(tmp_path: Path) -> None:
+    parser = build_parser()
+    args = parser.parse_args(
+        ["doctor", "--persona", "jeff", "--claude-md-probe", "--project", str(tmp_path)]
+    )
+    assert args.command == "doctor"
+    assert args.persona == "jeff"
+    assert args.claude_md_probe is True
+    assert args.project == tmp_path
+
+
 def test_parse_doctor_all_args() -> None:
     parser = build_parser()
     args = parser.parse_args(["doctor", "--persona", "all"])

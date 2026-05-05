@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import pytest
+
 from take_root.config import (
     ActorRouteConfig,
     ProviderConfig,
@@ -10,7 +12,7 @@ from take_root.config import (
     default_take_root_config,
     save_config,
 )
-from take_root.doctor import run_doctor
+from take_root.doctor import DOCTOR_CALL_TIMEOUT_SEC, run_doctor
 
 
 def _write_fake_claude(bin_dir: Path) -> None:
@@ -22,7 +24,12 @@ def _write_fake_claude(bin_dir: Path) -> None:
         "fi\n"
         'printf \'%s\\n\' "$@" > "$TRACE_DIR/argv.txt"\n'
         'env | sort > "$TRACE_DIR/env.txt"\n'
-        "printf 'provider-check-ok\\n'\n"
+        'if printf \'%s\\n\' "$@" | grep -q "Harness resolved_model"; then\n'
+        "  printf 'model=qwen3.6-plus effort=medium "
+        "已看到CLAUDE.md：项目文档说明目标流程配置上下文与运行约束\\n'\n"
+        "else\n"
+        "  printf 'provider-check-ok\\n'\n"
+        "fi\n"
     )
     path = bin_dir / "claude"
     path.write_text(script, encoding="utf-8")
@@ -160,6 +167,39 @@ def test_doctor_supports_api_key_saved_in_config(monkeypatch, tmp_path: Path) ->
 
     env_text = (trace_dir / "env.txt").read_text(encoding="utf-8")
     assert "ANTHROPIC_AUTH_TOKEN=abcd1234token" in env_text
+
+
+def test_doctor_claude_md_probe_prints_raw_reply(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys
+) -> None:
+    bin_dir = tmp_path / "bin"
+    trace_dir = tmp_path / "trace"
+    bin_dir.mkdir()
+    trace_dir.mkdir()
+    _write_fake_claude(bin_dir)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+    monkeypatch.setenv("TRACE_DIR", str(trace_dir))
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN_QWEN", "abcd1234token")
+    (tmp_path / "CLAUDE.md").write_text("TAKE_ROOT_CONTEXT=loaded\n", encoding="utf-8")
+    save_config(tmp_path, default_take_root_config())
+
+    result = run_doctor(tmp_path, "jeff", claude_md_probe=True)
+
+    assert result["call_status"] == "success"
+    output = capsys.readouterr().out
+    assert "raw_reply:" in output
+    assert "已看到CLAUDE.md" in output
+    stdout_text = (tmp_path / ".take_root" / "doctor" / "jeff_call_stdout.txt").read_text(
+        encoding="utf-8"
+    )
+    assert "model=qwen3.6-plus effort=medium" in stdout_text
+    argv_text = (trace_dir / "argv.txt").read_text(encoding="utf-8")
+    assert "Summarize that CLAUDE.md in exactly 50 Chinese characters." in argv_text
+    assert "Harness resolved_model: qwen3.6-plus" in argv_text
+
+
+def test_doctor_default_call_timeout_is_300_seconds() -> None:
+    assert DOCTOR_CALL_TIMEOUT_SEC == 300
 
 
 def test_doctor_all_runs_all_personas(monkeypatch, tmp_path: Path, capsys) -> None:

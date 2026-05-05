@@ -16,6 +16,13 @@ from take_root.runtimes.codex import CodexRuntime
 from take_root.state import utc_now_iso
 
 DOCTOR_PROMPT = "Reply with exactly one line: provider-check-ok"
+DOCTOR_CALL_TIMEOUT_SEC = 300
+CLAUDE_MD_PROBE_PROMPT = (
+    "Report the model and effort you are currently using. "
+    "Then say whether CLAUDE.md from the current working directory is visible in your context. "
+    "Summarize that CLAUDE.md in exactly 50 Chinese characters. "
+    "If CLAUDE.md is not visible, say that clearly."
+)
 DOCTOR_SUMMARY_KEYS = (
     "persona",
     "runtime",
@@ -37,6 +44,15 @@ def _doctor_dir(project_root: Path) -> Path:
 
 def _write_text(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
+
+
+def _claude_md_probe_prompt(summary: dict[str, Any]) -> str:
+    return (
+        f"{CLAUDE_MD_PROBE_PROMPT}\n"
+        f"Harness resolved_model: {summary.get('resolved_model')}\n"
+        f"Harness effort: {summary.get('effort')}\n"
+        "Use those harness values when reporting model and effort."
+    )
 
 
 def _runtime_for(persona_name: str, project_root: Path) -> tuple[Any, dict[str, Any]]:
@@ -64,7 +80,12 @@ def _runtime_for(persona_name: str, project_root: Path) -> tuple[Any, dict[str, 
     return runtime, summary
 
 
-def _report_markdown(summary: dict[str, Any], call_result: dict[str, Any] | None) -> str:
+def _report_markdown(
+    summary: dict[str, Any],
+    call_result: dict[str, Any] | None,
+    *,
+    prompt: str | None = None,
+) -> str:
     lines = [
         "# take-root doctor",
         "",
@@ -80,6 +101,20 @@ def _report_markdown(summary: dict[str, Any], call_result: dict[str, Any] | None
         lines.append(f"- call_status: {call_result['status']}")
         lines.append(f"- exit_code: {call_result['exit_code']}")
         lines.append(f"- duration_sec: {call_result['duration_sec']:.3f}")
+        if call_result.get("raw_reply"):
+            lines.append("")
+            lines.append("## raw_reply")
+            lines.append("")
+            lines.append("```text")
+            lines.append(str(call_result["raw_reply"]))
+            lines.append("```")
+        if prompt:
+            lines.append("")
+            lines.append("## prompt")
+            lines.append("")
+            lines.append("```text")
+            lines.append(prompt)
+            lines.append("```")
     return "\n".join(lines) + "\n"
 
 
@@ -98,6 +133,9 @@ def _print_terminal_summary(
         print(f"call_status: {call_result['status']}")
         print(f"exit_code: {call_result['exit_code']}")
         print(f"duration_sec: {call_result['duration_sec']:.3f}")
+        if call_result.get("raw_reply"):
+            print("raw_reply:")
+            print(str(call_result["raw_reply"]))
     print(f"doctor_report: {report_path}")
 
 
@@ -106,6 +144,7 @@ def _run_doctor_one(
     persona_name: str,
     *,
     no_call: bool = False,
+    claude_md_probe: bool = False,
 ) -> dict[str, Any]:
     runtime, summary = _runtime_for(persona_name, project_root)
     output_dir = _doctor_dir(project_root)
@@ -115,20 +154,37 @@ def _run_doctor_one(
     stderr_path = output_dir / f"{persona_name}_call_stderr.txt"
 
     call_result: dict[str, Any] | None = None
+    if claude_md_probe and not (project_root / "CLAUDE.md").exists():
+        raise SystemExit(f"CLAUDE.md not found under project root: {project_root}")
+
     if no_call:
         _write_text(stdout_path, "")
         _write_text(stderr_path, "")
     else:
-        result = runtime.call_noninteractive(DOCTOR_PROMPT, cwd=project_root, timeout_sec=60)
+        prompt = _claude_md_probe_prompt(summary) if claude_md_probe else DOCTOR_PROMPT
+        result = runtime.call_noninteractive(
+            prompt,
+            cwd=project_root,
+            timeout_sec=DOCTOR_CALL_TIMEOUT_SEC,
+        )
         call_result = {
             "status": "success",
             "exit_code": result.exit_code,
             "duration_sec": result.duration_sec,
         }
+        if claude_md_probe:
+            call_result["raw_reply"] = result.stdout
         _write_text(stdout_path, result.stdout)
         _write_text(stderr_path, result.stderr)
 
-    _write_text(report_path, _report_markdown(summary, call_result))
+    _write_text(
+        report_path,
+        _report_markdown(
+            summary,
+            call_result,
+            prompt=_claude_md_probe_prompt(summary) if claude_md_probe and call_result else None,
+        ),
+    )
     env_path.write_text(
         json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=False) + "\n",
         encoding="utf-8",
@@ -145,14 +201,32 @@ def _run_doctor_one(
     }
 
 
-def run_doctor(project_root: Path, persona_name: str, *, no_call: bool = False) -> dict[str, Any]:
+def run_doctor(
+    project_root: Path,
+    persona_name: str,
+    *,
+    no_call: bool = False,
+    claude_md_probe: bool = False,
+) -> dict[str, Any]:
     if persona_name != "all":
-        return _run_doctor_one(project_root, persona_name, no_call=no_call)
+        return _run_doctor_one(
+            project_root,
+            persona_name,
+            no_call=no_call,
+            claude_md_probe=claude_md_probe,
+        )
     results: list[dict[str, Any]] = []
     for index, name in enumerate(PERSONA_NAMES):
         if index > 0:
             print()
-        results.append(_run_doctor_one(project_root, name, no_call=no_call))
+        results.append(
+            _run_doctor_one(
+                project_root,
+                name,
+                no_call=no_call,
+                claude_md_probe=claude_md_probe,
+            )
+        )
     success_count = sum(1 for item in results if item["call_status"] == "success")
     skipped_count = sum(1 for item in results if item["call_status"] == "skipped")
     print()

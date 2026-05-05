@@ -81,6 +81,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="persona 名称，或 all 检查所有 persona",
     )
     doctor_parser.add_argument("--no-call", action="store_true", help="只做静态诊断，不执行调用")
+    doctor_parser.add_argument(
+        "--claude-md-probe",
+        action="store_true",
+        help="让 persona 验证目标目录 CLAUDE.md 是否可见，并打印真实回复",
+    )
+    doctor_parser.add_argument(
+        "--project",
+        type=Path,
+        default=argparse.SUPPRESS,
+        help="目标项目路径（doctor 子命令位置也支持）",
+    )
 
     plan_parser = subparsers.add_parser("plan", help="执行规划阶段")
     plan_parser.add_argument("--reference", action="append", default=[], type=Path, help="参考文件")
@@ -266,7 +277,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             return 0
         if args.command == "doctor":
-            run_doctor(project_root, str(args.persona), no_call=bool(args.no_call))
+            run_doctor(
+                project_root,
+                str(args.persona),
+                no_call=bool(args.no_call),
+                claude_md_probe=bool(args.claude_md_probe),
+            )
             return 0
         if args.command == "plan":
             run_plan(
