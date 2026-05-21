@@ -114,7 +114,7 @@ take-root status
 
 - `run` 会在 `init` 未完成时自动先跑 `init`，但不会自动补跑 `configure`。
 - `plan` 的 Jeff 是交互式；Robin 和 Neo 是非交互、review-only。
-- `code` 默认在预算耗尽时停在 `code`；只有显式传 `--on-code-exhausted advance` 才会进入 `test`。
+- `code` 默认在 token 预算耗尽时停在 `code`；只有显式传 `--on-code-exhausted advance` 才会进入 `test`。
 - `resume` 不读取你上次传入的 CLI 调参，而是按内置默认值继续当前 phase。
 
 ## 协作架构图
